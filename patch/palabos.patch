@@ -1,0 +1,468 @@
+diff --git a/src/atomicBlock/atomicBlock3D.h b/src/atomicBlock/atomicBlock3D.h
+index c14e7a8..e7580c6 100644
+--- a/src/atomicBlock/atomicBlock3D.h
++++ b/src/atomicBlock/atomicBlock3D.h
+@@ -31,6 +31,7 @@
+ #include "core/block3D.h"
+ #include "core/blockStatistics.h"
+ #include "core/geometry3D.h"
++#include "core/plbTimer.h"
+ #include "atomicBlock/dataProcessorWrapper3D.h"
+ #include "atomicBlock/reductiveDataProcessorWrapper3D.h"
+ #include <algorithm>
+@@ -174,6 +175,9 @@ private:
+     StatSubscriber3D statisticsSubscriber;
+     DataProcessorVector explicitInternalProcessors;
+     DataProcessorVector automaticInternalProcessors;
++public:
++    //Only used in combination with the applyTimedProcessingFunctional class to calculate load imbalance
++    global::PlbTimer timer;
+     mutable BlockDataTransfer3D* dataTransfer;
+ };
+ 
+diff --git a/src/atomicBlock/blockLattice3D.h b/src/atomicBlock/blockLattice3D.h
+index 35412f6..780bd30 100644
+--- a/src/atomicBlock/blockLattice3D.h
++++ b/src/atomicBlock/blockLattice3D.h
+@@ -191,6 +191,7 @@ private:
+ private:
+     Dynamics<T,Descriptor>* backgroundDynamics;
+     Cell<T,Descriptor>     *rawData;
++public:
+     Cell<T,Descriptor>   ***grid;
+ public:
+     static CachePolicy3D& cachePolicy();
+diff --git a/src/core/cell.h b/src/core/cell.h
+index bed151b..ca7a2bd 100644
+--- a/src/core/cell.h
++++ b/src/core/cell.h
+@@ -49,7 +49,7 @@ public:
+         PLB_PRECONDITION( index < ExternalField::numScalars );
+         return data+index;
+     }
+-private:
++public:
+     T data[ExternalField::numScalars];
+ };
+ 
+@@ -371,7 +371,9 @@ private:
+     void iniExternal();
+ private:
+     Array<T,Descriptor<T>::numPop> f;         ///< distribution functions
++public:
+     External                       external;  ///< external scalars
++private:
+     bool                           takesStat; ///< is statistics taken?
+     Dynamics<T,Descriptor>*        dynamics;  ///< local LB dynamics
+ };
+diff --git a/src/libraryInterfaces/TINYXML_xmlIO.cpp b/src/libraryInterfaces/TINYXML_xmlIO.cpp
+index aff55bc..36c6a50 100644
+--- a/src/libraryInterfaces/TINYXML_xmlIO.cpp
++++ b/src/libraryInterfaces/TINYXML_xmlIO.cpp
+@@ -167,13 +167,13 @@ XMLreader::XMLreader() {
+ }
+ 
+ XMLreader::~XMLreader() {
+-    std::map<plint,Data>::iterator it = data_map.begin();
+-    for (; it != data_map.end(); ++it) {
+-        std::vector<XMLreader*>& children = it->second.children;
+-        for (pluint iNode=0; iNode<children.size(); ++iNode) {
+-            delete children[iNode];
+-        }
+-    }
++    //std::map<plint,Data>::iterator it = data_map.begin();
++    //for (; it != data_map.end(); ++it) {
++    //    std::vector<XMLreader*>& children = it->second.children;
++    //    for (pluint iNode=0; iNode<children.size(); ++iNode) {
++    //        delete children[iNode];
++    //    }
++    //}
+ }
+ 
+ void XMLreader::print(int indent) const {
+diff --git a/src/libraryInterfaces/TINYXML_xmlIO.h b/src/libraryInterfaces/TINYXML_xmlIO.h
+index 39d7949..25741c7 100644
+--- a/src/libraryInterfaces/TINYXML_xmlIO.h
++++ b/src/libraryInterfaces/TINYXML_xmlIO.h
+@@ -76,6 +76,7 @@ public:
+     XMLreaderProxy(XMLreader const* reader_);
+     XMLreaderProxy(XMLreader const* reader_, plint id_);
+     template <typename T> void read(T& values) const;
++    template <typename T> T read() const;
+     template <typename T> bool readNoThrow(T& values) const;
+     template <typename T> void read(std::vector<T>& values) const;
+     template <typename T> bool readNoThrow(std::vector<T>& values) const;
+diff --git a/src/libraryInterfaces/TINYXML_xmlIO.hh b/src/libraryInterfaces/TINYXML_xmlIO.hh
+index cbe9bd6..0e50bf0 100644
+--- a/src/libraryInterfaces/TINYXML_xmlIO.hh
++++ b/src/libraryInterfaces/TINYXML_xmlIO.hh
+@@ -52,6 +52,19 @@ void XMLreaderProxy::read(T& value) const {
+     value = tmp;
+ }
+ 
++template <typename T>
++T XMLreaderProxy::read() const {
++    if (!reader) {
++        plbIOError(std::string("XMLreaderProxy has no reader"));
++    }
++    std::stringstream valueStr(reader->getText(id));
++    T tmp = T();
++    if (!(valueStr>>tmp)) {
++        plbIOError(std::string("Cannot read value from XML element ") + reader->getName());
++    }
++    return tmp;
++}
++
+ template <>
+ inline void XMLreaderProxy::read<bool>(bool& value) const {
+     if (!reader) return;
+diff --git a/src/multiBlock/multiBlockLattice3D.h b/src/multiBlock/multiBlockLattice3D.h
+index 3aa64f7..09beee4 100644
+--- a/src/multiBlock/multiBlockLattice3D.h
++++ b/src/multiBlock/multiBlockLattice3D.h
+@@ -108,6 +108,7 @@ public:
+     virtual void externalStream();
+     virtual void collideAndStream(Box3D domain);
+     virtual void collideAndStream();
++    virtual void timedCollideAndStream();
+     void externalCollideAndStream();
+     virtual void incrementTime();
+     virtual void resetTime(pluint value);
+@@ -130,6 +131,7 @@ public:
+     static std::string descriptorType();
+ private:
+     void collideAndStreamImplementation();
++    void timedCollideAndStreamImplementation();
+     void streamImplementation();
+     void allocateAndInitialize();
+     void eliminateStatisticsInEnvelope();
+diff --git a/src/multiBlock/multiBlockLattice3D.hh b/src/multiBlock/multiBlockLattice3D.hh
+index f106b83..0fd55ed 100644
+--- a/src/multiBlock/multiBlockLattice3D.hh
++++ b/src/multiBlock/multiBlockLattice3D.hh
+@@ -345,6 +345,19 @@ void MultiBlockLattice3D<T,Descriptor>::collideAndStream() {
+ }
+ 
+ template<typename T, template<typename U> class Descriptor>
++void MultiBlockLattice3D<T,Descriptor>::timedCollideAndStream() {
++    global::profiler().start("cycle");
++    timedCollideAndStreamImplementation();
++    this->executeInternalProcessors();
++    this->evaluateStatistics();
++    this->incrementTime();
++    global::profiler().stop("cycle");
++    if (global::profiler().cyclingIsAutomatic()) {
++        global::profiler().cycle();
++    }
++}
++
++template<typename T, template<typename U> class Descriptor>
+ void MultiBlockLattice3D<T,Descriptor>::externalCollideAndStream() {
+     global::profiler().start("cycle");
+     collideAndStreamImplementation();
+@@ -391,6 +404,46 @@ void MultiBlockLattice3D<T,Descriptor>::collideAndStreamImplementation() {
+ }
+ 
+ template<typename T, template<typename U> class Descriptor>
++void MultiBlockLattice3D<T,Descriptor>::timedCollideAndStreamImplementation() {
++    ThreadAttribution const& threadAttribution=this->getMultiBlockManagement().getThreadAttribution();
++    if (threadAttribution.hasCoProcessors()) {
++        for ( typename BlockMap::iterator it = blockLattices.begin();
++              it != blockLattices.end(); ++it )
++        {
++            plint blockId = it->first;
++            int handle = threadAttribution.getCoProcessorHandle(blockId);
++            if (handle>=0) {
++                 global::defaultCoProcessor3D<T>().collideAndStream(handle);
++            }
++            else {
++                SmartBulk3D bulk(this->getMultiBlockManagement(), blockId);
++                // CollideAndStream must be applied to full domain,
++                //   including currently active envelopes.
++                Box3D domain = extendPeriodic(bulk.computeNonPeriodicEnvelope(),
++                                              this->getMultiBlockManagement().getEnvelopeWidth());
++                it->second->timer.start();
++                it->second -> collideAndStream( bulk.toLocal(domain) );
++                it->second->timer.stop();
++            }
++        }
++    }
++    else  {
++        for ( typename BlockMap::iterator it = blockLattices.begin();
++              it != blockLattices.end(); ++it)
++        {
++            SmartBulk3D bulk(this->getMultiBlockManagement(), it->first);
++            // CollideAndStream must be applied to full domain,
++            //   including currently active envelopes.
++            Box3D domain = extendPeriodic(bulk.computeNonPeriodicEnvelope(),
++                                          this->getMultiBlockManagement().getEnvelopeWidth());
++            it->second->timer.start();
++            it->second -> collideAndStream( bulk.toLocal(domain) );
++            it->second->timer.stop();
++        }
++    }
++}
++
++template<typename T, template<typename U> class Descriptor>
+ void MultiBlockLattice3D<T,Descriptor>::incrementTime() {
+     for ( typename BlockMap::iterator it = blockLattices.begin();
+           it != blockLattices.end(); ++it)
+diff --git a/src/offLattice/triangularSurfaceMesh.h b/src/offLattice/triangularSurfaceMesh.h
+index b78c7c2..13c0262 100644
+--- a/src/offLattice/triangularSurfaceMesh.h
++++ b/src/offLattice/triangularSurfaceMesh.h
+@@ -146,6 +146,12 @@ public:
+     ///   3.] The third rotation is by an angle psi about the new z-axis.
+     void rotate(T phi, T theta, T psi);
+ 
++    /// Rotate the surface mesh.
++    ///   Alternative method using axial rotations. 
++    ///   The subsequent rotations happen in the following order: around x, around y, around z.
++    ///   Angles are in radians.
++    void rotateXYZ(T alpha, T beta, T gamma);
++
+     /// Smooth the surface mesh.
+     ///   The triangular surface mesh is smoothed by using a spatial
+     ///   averaging algorithm. Interior vertices are treated differently
+diff --git a/src/offLattice/triangularSurfaceMesh.hh b/src/offLattice/triangularSurfaceMesh.hh
+index 5f2c9b0..cdb22b0 100644
+--- a/src/offLattice/triangularSurfaceMesh.hh
++++ b/src/offLattice/triangularSurfaceMesh.hh
+@@ -284,6 +284,82 @@ void TriangularSurfaceMesh<T>::rotate(T phi, T theta, T psi)
+ }
+ 
+ template<typename T>
++void TriangularSurfaceMesh<T>::rotateXYZ(T alpha, T beta, T gamma)
++{
++    static const T pi = std::acos((T) -1.0);
++
++    PLB_ASSERT((theta > T() || util::fpequal(theta, T(), eps0)) &&
++               (theta < pi  || util::fpequal(theta, pi, eps0)));
++
++    // Rotation matrix around x axis (column-first)
++    T a[3][3];
++    a[0][0] =  (T) 1.0;
++    a[0][1] =  (T) 0.0;
++    a[0][2] =  (T) 0.0;
++    a[1][0] =  (T) 0.0;
++    a[1][1] =  std::cos(alpha);
++    a[1][2] =  std::sin(alpha);
++    a[2][0] =  (T) 0.0;
++    a[2][1] = -std::sin(alpha);
++    a[2][2] =  std::cos(alpha);
++
++    // Rotation matrix around y axis (column-first)
++    T b[3][3];
++    b[0][0] =  std::cos(beta);
++    b[0][1] =  (T) 0.0;
++    b[0][2] =  -std::sin(beta);
++    b[1][0] =  (T) 0.0;
++    b[1][1] =  (T) 1.0;
++    b[1][2] =  (T) 0.0;
++    b[2][0] =  std::sin(beta);
++    b[2][1] =  (T) 0.0;
++    b[2][2] =  std::cos(beta);
++
++    // Ry * Rx
++    T c[3][3];
++    for (int i = 0; i < 3; i++) {
++        for (int j = 0; j < 3; j++) {
++            c[i][j] = (T) 0.0;
++            for (int k = 0; k < 3; k++) {
++                c[i][j] += a[k][j]*b[i][k];
++            }
++        }
++    }
++
++    // Rotation matrix around z axis (column-first)
++    b[0][0] =  std::cos(gamma);
++    b[0][1] =  std::sin(gamma);
++    b[0][2] =  (T) 0.0;
++    b[1][0] = -std::sin(gamma);
++    b[1][1] =  std::cos(gamma);
++    b[1][2] =  (T) 0.0;
++    b[2][0] =  (T) 0.0;
++    b[2][1] =  (T) 0.0;
++    b[2][2] =  (T) 1.0;
++
++
++    // Rz * [Ry*Rx]
++    for (int i = 0; i < 3; i++) {
++        for (int j = 0; j < 3; j++) {
++            a[i][j] = (T) 0.0;
++            for (int k = 0; k < 3; k++) {
++                a[i][j] += c[k][j]*b[i][k];
++            }
++        }
++    }
++
++    for (plint iVertex = 0; iVertex < numVertices; iVertex++) {
++        Array<T,3> x = getVertex(iVertex);
++        for (int i = 0; i < 3; i++) {
++            getVertex(iVertex)[i] = (T) 0.0;
++            for (int j = 0; j < 3; j++) {
++                getVertex(iVertex)[i] += a[i][j]*x[j];
++            }
++        }
++    }
++}
++
++template<typename T>
+ void TriangularSurfaceMesh<T>::smooth(plint maxiter, T relax, bool isMeasureWeighted)
+ {
+     PLB_ASSERT(maxiter >= 0);
+diff --git a/src/particles/particleField3D.h b/src/particles/particleField3D.h
+index 5245d30..cb4283a 100644
+--- a/src/particles/particleField3D.h
++++ b/src/particles/particleField3D.h
+@@ -70,6 +70,7 @@ public:
+ public:
+     /// Helper function: returns if a given particle is situated in the indicated (local) domain.
+     bool isContained(Array<T,3> const& particlePos, Box3D box) const;
++    bool isContained(T iX, T iY, T iZ, Box3D box) const;
+     void computeGridPosition (
+             Array<T,3> const& position,
+             plint& iX, plint& iY, plint& iZ ) const;
+diff --git a/src/particles/particleField3D.hh b/src/particles/particleField3D.hh
+index c0cbd23..5d1916d 100644
+--- a/src/particles/particleField3D.hh
++++ b/src/particles/particleField3D.hh
+@@ -40,6 +40,20 @@ ParticleField3D<T,Descriptor>::ParticleField3D(plint nx, plint ny, plint nz, Blo
+ 
+ template<typename T, template<typename U> class Descriptor>
+ bool ParticleField3D<T,Descriptor>::isContained (
++        T iX, T iY, T iZ, Box3D box ) const
++{
++    Dot3D const& location = this->getLocation();
++    T x = iX-location.x;
++    T y = iY-location.y;
++    T z = iZ-location.z;
++
++    return (x > (T)box.x0-(T)0.5) && (x <= (T)box.x1+(T)0.5) &&
++           (y > (T)box.y0-(T)0.5) && (y <= (T)box.y1+(T)0.5) &&
++           (z > (T)box.z0-(T)0.5) && (z <= (T)box.z1+(T)0.5);
++}
++
++template<typename T, template<typename U> class Descriptor>
++bool ParticleField3D<T,Descriptor>::isContained (
+         Array<T,3> const& particlePos, Box3D box ) const
+ {
+     Dot3D const& location = this->getLocation();
+@@ -711,8 +725,10 @@ void LightParticleField3D<T,Descriptor>::swap(LightParticleField3D<T,Descriptor>
+ template<typename T, template<typename U> class Descriptor>
+ void LightParticleField3D<T,Descriptor>::addParticle(Box3D domain, Particle3D<T,Descriptor>* particle) {
+     Box3D finalDomain;
++    Array<T,3> pos; 
++    pos = particle->getPosition();
+     if( intersect(domain, this->getBoundingBox(), finalDomain) &&
+-        this->isContained(particle->getPosition(), finalDomain) )
++        this->isContained(pos[0],pos[1],pos[2], finalDomain) )
+     {
+         particles.push_back(particle);
+     }
+@@ -725,10 +741,12 @@ template<typename T, template<typename U> class Descriptor>
+ void LightParticleField3D<T,Descriptor>::removeParticles(Box3D domain) {
+     std::vector<Particle3D<T,Descriptor>*> remainingParticles;
+     Box3D finalDomain;
++    Array<T,3> pos; 
+     if( intersect(domain, this->getBoundingBox(), finalDomain) )
+     {
+         for (pluint i=0; i<particles.size(); ++i) {
+-            if (this->isContained(particles[i]->getPosition(),finalDomain)) {
++            pos = particles[i]->getPosition();
++            if (this->isContained(pos[0],pos[1],pos[2],finalDomain)) {
+                 delete particles[i];
+             }
+             else {
+@@ -745,8 +763,10 @@ void LightParticleField3D<T,Descriptor>::removeParticles(Box3D domain, plint tag
+     Box3D finalDomain;
+     if( intersect(domain, this->getBoundingBox(), finalDomain) )
+     {
++        Array<T,3> pos; 
+         for (pluint i=0; i<particles.size(); ++i) {
+-            if (this->isContained(particles[i]->getPosition(),finalDomain) &&
++            pos = particles[i]->getPosition();
++            if (this->isContained(pos[0],pos[1],pos[2],finalDomain) &&
+                 particles[i]->getTag() == tag )
+             {
+                 delete particles[i];
+@@ -765,8 +785,10 @@ void LightParticleField3D<T,Descriptor>::findParticles (
+ {
+     found.clear();
+     PLB_ASSERT( contained(domain, this->getBoundingBox()) );
++    Array<T,3> pos; 
+     for (pluint i=0; i<particles.size(); ++i) {
+-        if (this->isContained(particles[i]->getPosition(),domain)) {
++        pos = particles[i]->getPosition();
++        if (this->isContained(pos[0],pos[1],pos[2],domain)) {
+             found.push_back(particles[i]);
+         }
+     }
+@@ -778,8 +800,11 @@ void LightParticleField3D<T,Descriptor>::findParticles (
+ {
+     found.clear();
+     PLB_ASSERT( contained(domain, this->getBoundingBox()) );
++    Array<T,3> pos; 
++        
+     for (pluint i=0; i<particles.size(); ++i) {
+-        if (this->isContained(particles[i]->getPosition(),domain)) {
++        pos = particles[i]->getPosition();
++        if (this->isContained(pos[0],pos[1],pos[2],domain)) {
+             found.push_back(particles[i]);
+         }
+     }
+@@ -792,8 +817,10 @@ void LightParticleField3D<T,Descriptor>::velocityToParticleCoupling (
+     Box3D finalDomain;
+     if( intersect(domain, this->getBoundingBox(), finalDomain) )
+     {
++      Array<T,3> pos;
+         for (pluint i=0; i<particles.size(); ++i) {
+-            if (this->isContained(particles[i]->getPosition(),finalDomain)) {
++	  pos = particles[i]->getPosition();
++	  if (this->isContained(pos[0],pos[1],pos[2],finalDomain)) {
+                 particles[i]->velocityToParticle(velocityField, scaling);
+             }
+         }
+@@ -822,8 +849,10 @@ void LightParticleField3D<T,Descriptor>::rhoBarJtoParticleCoupling (
+     Box3D finalDomain;
+     if( intersect(domain, this->getBoundingBox(), finalDomain) )
+     {
++      Array<T,3> pos;
+         for (pluint i=0; i<particles.size(); ++i) {
+-            if (this->isContained(particles[i]->getPosition(),finalDomain)) {
++	  pos = particles[i]->getPosition();
++	  if (this->isContained(pos[0],pos[1],pos[2],finalDomain)) {
+                 particles[i]->rhoBarJtoParticle(rhoBarJfield, velIsJ, scaling);
+             }
+         }
+@@ -837,8 +866,10 @@ void LightParticleField3D<T,Descriptor>::fluidToParticleCoupling (
+     Box3D finalDomain;
+     if( intersect(domain, this->getBoundingBox(), finalDomain) )
+     {
++        Array<T,3> pos;
+         for (pluint i=0; i<particles.size(); ++i) {
+-            if (this->isContained(particles[i]->getPosition(),finalDomain)) {
++            pos = particles[i]->getPosition();
++            if (this->isContained(pos[0],pos[1],pos[2],finalDomain)) {
+                 particles[i]->fluidToParticle(lattice, scaling);
+             }
+         }
+@@ -851,13 +882,16 @@ void LightParticleField3D<T,Descriptor>::advanceParticles(Box3D domain, T cutOff
+     Box3D finalDomain;
+     if( intersect(domain, this->getBoundingBox(), finalDomain) )
+     {
++        Array<T,3> pos; 
+         for (pluint i=0; i<particles.size(); ++i) {
+             Particle3D<T,Descriptor>* particle = particles[i];
+-            if (this->isContained(particle->getPosition(),finalDomain)) {
++            pos = particle->getPosition();
++            if (this->isContained(pos[0],pos[1],pos[2],finalDomain)) {
+                 Array<T,3> oldPos( particle->getPosition() );
+                 particle->advance();
++                pos = particle->getPosition();
+                 if ( (cutOffValue>=T() && normSqr(oldPos-particle->getPosition())<cutOffValue) ||
+-                     (!this->isContained(particle->getPosition(),this->getBoundingBox()))  )
++                     (!this->isContained(pos[0],pos[1],pos[2],this->getBoundingBox()))  )
+                 {
+                     delete particle;
+                 }
