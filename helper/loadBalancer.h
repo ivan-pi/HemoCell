@@ -23,16 +23,23 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 #ifndef LOADBALANCER_H
 #define LOADBALANCER_H
-
 class LoadBalancer;
 
 #include "hemocell_internal.h"
 #include "hemocell.h"
 
+/*
+ * Maximum number of neighbours, a sane setting is 27 (3x3) but it should be increased accordingly with very small blocks and large envelopes
+ * Used in the loadbalancing library
+ */
+#ifndef HEMOCELL_MAX_NEIGHBOURS
+#define HEMOCELL_MAX_NEIGHBOURS 500 //27
+#endif
+
 class LoadBalancer {  
   public:
-  LoadBalancer(HemoCell & hemocell_) : hemocell(hemocell_), original_block_structure(0,0,0) { }
 #ifdef HEMO_PARMETIS
+  LoadBalancer(HemoCell & hemocell_);
   double calculateFractionalLoadImbalance();
   /**
    * Restructure blocks to reduce communication on one processor
@@ -40,6 +47,7 @@ class LoadBalancer {
    */
   void restructureBlocks(bool checkpoint_available=true);
 #else
+  LoadBalancer(HemoCell & hemocell_):hemocell(hemocell_){};
   double calculateFractionalLoadImbalance() {return 0.0;}
   void restructureBlocks(bool checkpoint_available=true) {}
 #endif
@@ -87,9 +95,9 @@ class LoadBalancer {
   bool FLI_iscalled = false;
   map<int,TOAB_t> gatherValues;
   HemoCell & hemocell;
-  bool original_block_stored = false;
-  SparseBlockStructure3D original_block_structure;
-  ThreadAttribution* original_thread_attribution;
+  bool original_block_stored = true;
+  SparseBlockStructure3D * original_block_structure = 0;
+  ThreadAttribution * original_thread_attribution = 0;
 };
 
 #endif

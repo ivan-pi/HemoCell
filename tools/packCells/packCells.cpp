@@ -10,7 +10,7 @@ void PrintHelp() {
           "\n"
           "OPTIONAL ARGUMENTS:\n"
           "  --hematocrit <0-1.0>                 -h The hematocrit of the solution\n"
-          "  --plt-ratio <ratio>                     The ratio of PLT per RBC, default=0.07\n"
+          "  --plt_ratio <ratio>                     The ratio of PLT per RBC, default=0.07\n"
           "  --rbc <n>                               Number of Red Blood Cells\n"
           "  --plt <n>                               Number of Platelets\n"
           "  --wbc <n>                               Number of White Blood Cells\n"
@@ -48,7 +48,8 @@ const option long_opts[] = {
             {"allowRotate",0, nullptr, 6},
             {"scale",      1, nullptr, 7},
             {"maxiter",    1, nullptr, 8},
-            {"help",       0, nullptr, 9}
+            {"help",       0, nullptr, 9},
+            {NULL, 0, 0, 0}
 };
 
 double rbcA = 8.4, rbcB = 4.4, rbcC = 8.4; // Inreased to cover biconcave shape of RBCs
