@@ -32,13 +32,13 @@ void GatherParticleVelocity::processGenericBlocks(Box3D domain, std::vector<Atom
     
     if (localParticles.size() > 0) {
       //initial value
-      hemo::Array<double,3> vel_vec = localParticles[0]->v;
-      double vel = sqrt(vel_vec[0]*vel_vec[0]+vel_vec[1]*vel_vec[1]+vel_vec[2]*vel_vec[2]);
-      double min=vel,max=vel,avg=0.;
+      hemo::Array<T,3> vel_vec = localParticles[0]->sv.v;
+      T vel = sqrt(vel_vec[0]*vel_vec[0]+vel_vec[1]*vel_vec[1]+vel_vec[2]*vel_vec[2]);
+      T min=vel,max=vel,avg=0.;
 
 
       for (const HemoCellParticle * particle : localParticles) {
-        vel_vec = particle->v;
+        vel_vec = particle->sv.v;
         vel = sqrt(vel_vec[0]*vel_vec[0]+vel_vec[1]*vel_vec[1]+vel_vec[2]*vel_vec[2]);
         min = min > vel ? vel : min;
         max = max < vel ? vel : max;
@@ -59,13 +59,13 @@ void GatherParticleForce::processGenericBlocks(Box3D domain, std::vector<AtomicB
     
     if (localParticles.size() > 0) {
       //initial value
-      hemo::Array<double,3> force_vec = localParticles[0]->force +localParticles[0]->force_repulsion;
-      double force = sqrt(force_vec[0]*force_vec[0]+force_vec[1]*force_vec[1]+force_vec[2]*force_vec[2]);
-      double min=force,max=force,avg=0.;
+      hemo::Array<T,3> force_vec = localParticles[0]->sv.force +localParticles[0]->sv.force_repulsion;
+      T force = sqrt(force_vec[0]*force_vec[0]+force_vec[1]*force_vec[1]+force_vec[2]*force_vec[2]);
+      T min=force,max=force,avg=0.;
 
 
       for (const HemoCellParticle * particle : localParticles) {
-        force_vec = particle->force + particle->force_repulsion;
+        force_vec = particle->sv.force + particle->sv.force_repulsion;
         force = sqrt(force_vec[0]*force_vec[0]+force_vec[1]*force_vec[1]+force_vec[2]*force_vec[2]);
         min = min > force ? force : min;
         max = max < force ? force : max;
@@ -88,7 +88,7 @@ ParticleStatistics ParticleInfo::calculateVelocityStatistics(HemoCell* hemocell)
   wrapper.push_back(hemocell->cellfields->immersedParticles);
   applyTimedProcessingFunctional(new GatherParticleVelocity(gatherValues),hemocell->cellfields->immersedParticles->getBoundingBox(),wrapper);
   int numAtomicBlock = hemocell->lattice->getMultiBlockManagement().getSparseBlockStructure().getNumBlocks();
-  HemoCellGatheringFunctional<ParticleStatistics>::gather(gatherValues,numAtomicBlock);
+  HemoCellGatheringFunctional<ParticleStatistics>::gather(gatherValues);
   
   ParticleStatistics result = gatherValues.begin()->second;
   result.avg = 0.;
@@ -116,7 +116,7 @@ ParticleStatistics ParticleInfo::calculateForceStatistics(HemoCell* hemocell) {
   wrapper.push_back(hemocell->cellfields->immersedParticles);
   applyTimedProcessingFunctional(new GatherParticleForce(gatherValues),hemocell->cellfields->immersedParticles->getBoundingBox(),wrapper);
   int numAtomicBlock = hemocell->lattice->getMultiBlockManagement().getSparseBlockStructure().getNumBlocks();
-  HemoCellGatheringFunctional<ParticleStatistics>::gather(gatherValues,numAtomicBlock);
+  HemoCellGatheringFunctional<ParticleStatistics>::gather(gatherValues);
   
   if (gatherValues.size() > 0) {
     ParticleStatistics result = gatherValues.begin()->second;

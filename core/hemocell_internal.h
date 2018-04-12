@@ -27,10 +27,12 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #ifndef WITHOUT_PLB
 
 #define VERSION_MAJOR 1
-#define VERSION_MINOR 1
+#define VERSION_MINOR 2
 
 //Load Constants
 #include "constant_defaults.h"
+//Include logging stuff
+#include "logfile.h"
 
 #include "palabos3D.h"
 #include "palabos3D.hh"

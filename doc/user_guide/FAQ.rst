@@ -13,7 +13,8 @@ Q: Can the cells lie out of the domain?
 ---------------------------------------
 
 Yes, cells are bound inside the domain by their centerpoints, so parts of the
-cell might reach over the domain. These cells are deleted during initialisation.
+cell might reach over the domain. These cells are deleted during initialisation,
+unless the system is run on a single core.
 
 
 Q: What is the exact centerpoint of the domain, how big is my domain?
@@ -23,4 +24,11 @@ When you specify a domain of for example 10 cells, the exact
 middle will be *BETWEEN* cell 5 and 6. imagine that dx is 0.5µm then the domain
 is 9.5µm long, and the middle is 4.75µm. periodic boundaries of course add 1 dx
 back to the length.
+
+Q: Compiling with the singularity images gives an error within Cmake
+---------------------------------------------------------------------
+
+We have had reports that the clang (or llvm) compiler can cause problems with
+compiling the singularity image. Disabling it (removing it from the environment)
+or using another system might work. We are looking into this issue.
 

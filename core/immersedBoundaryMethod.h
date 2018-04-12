@@ -35,10 +35,10 @@ inline bool contained_sane(hemo::Array<plint,3> const& x, Box3D const& box) {
            x[1]>=box.y0 && x[1]<=box.y1 &&
            x[2]>=box.z0 && x[2]<=box.z1;
 }
-inline double phi2 (double x) {
+inline T phi2 (T x) {
     x = fabs(x);
     x = 1.0 - x;
-    return max(x,0.0);
+    return max(x,(T)0.0);
 }
 
 template<typename T>
@@ -61,7 +61,7 @@ void interpolationCoefficientsPhi1 (
         std::vector<Dot3D>& cellPos, std::vector<T>& weights);
 
 inline void interpolationCoefficientsPhi2 (
-        BlockLattice3D<double,DESCRIPTOR> const& block, HemoCellParticle * particle)
+        BlockLattice3D<T,DESCRIPTOR> & block, HemoCellParticle * particle)
 {
     //Clean current
     particle->kernelWeights.clear();
@@ -75,8 +75,8 @@ inline void interpolationCoefficientsPhi2 (
     const hemo::Array<plint,3> relLoc = {tmpDot.x, tmpDot.y, tmpDot.z};
 
     //Get position, relative
-    const hemo::Array<double,3> position_tmp = particle->position;
-    const hemo::Array<double,3> position = {position_tmp[0] -relLoc[0], position_tmp[1]-relLoc[1],position_tmp[2]-relLoc[2]};
+    const hemo::Array<T,3> position_tmp = particle->sv.position;
+    const hemo::Array<T,3> position = {position_tmp[0] -relLoc[0], position_tmp[1]-relLoc[1],position_tmp[2]-relLoc[2]};
 
     //Get our reference node (0,0)
     const hemo::Array<plint,3> center({plint(position[0] + 0.5), plint(position[1] + 0.5), plint(position[2] + 0.5)}); 
@@ -86,31 +86,48 @@ inline void interpolationCoefficientsPhi2 (
     
     //Prealloc is better than JItalloc
     hemo::Array<plint,3> posInBlock;
-    double phi[3];
-    double weight;
+    T phi[3];
+    T weight;
+    T total_weight = 0;
     
     for (int dx = x0; dx < x1; ++dx) {
         for (int dy = x0; dy < x1; ++dy) {
             for (int dz = x0; dz < x1; ++dz) {
                 posInBlock = {center[0] + dx, center[1] + dy, center[2] + dz};
-                if (contained_sane(posInBlock,boundingBox)) {
-                    phi[0] = (position[0] - posInBlock[0]); //Get absolute distance
-                    phi[1] = (position[1] - posInBlock[1]);
-                    phi[2] = (position[2] - posInBlock[2]);
-                    weight = phi2(phi[0]) * phi2(phi[1]) * phi2(phi[2]);
-
-                    if (weight>0) {
-                        particle->kernelWeights.push_back(weight);
-                        particle->kernelLocations.push_back(&block.grid[posInBlock[0]][posInBlock[1]][posInBlock[2]]);
-                    }
+                
+                //Sanity checks, skip if outside domain or boundary
+                if (!contained_sane(posInBlock,boundingBox)) {
+                  continue;
                 }
+
+                phi[0] = (position[0] - posInBlock[0]); //Get absolute distance
+                phi[1] = (position[1] - posInBlock[1]);
+                phi[2] = (position[2] - posInBlock[2]);
+                weight = phi2(phi[0]) * phi2(phi[1]) * phi2(phi[2]);
+                
+                if (weight  == 0.0){
+                  continue;
+                }
+                if (block.get(posInBlock[0],posInBlock[1],posInBlock[2]).getDynamics().isBoundary()) {
+                  continue;
+                }              
+                
+                total_weight+=weight;
+
+                particle->kernelWeights.push_back(weight);
+                particle->kernelLocations.push_back(&block.get(posInBlock[0],posInBlock[1],posInBlock[2]));
             }
         }
+    }
+    const T weight_coeff = 1.0 / total_weight;
+    for(T & weight_ : particle->kernelWeights) { //Normalize weight to 1
+      weight_ *= weight_coeff;
     }
 }
 
 template<typename T, template<typename U> class Descriptor>
 void interpolationCoefficientsPhi3 (
+    
         BlockLattice3D<T,Descriptor> const& block, hemo::Array<T,3> const& position,
         std::vector<Dot3D>& cellPos, std::vector<T>& weights);
 

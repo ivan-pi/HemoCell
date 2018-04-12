@@ -35,24 +35,24 @@ void CellInformationFunctionals::calculate_vol_pos_area(HemoCell* hemocell) {
 
 void CellInformationFunctionals::CellVolume::processGenericBlocks(Box3D domain, std::vector<AtomicBlock3D*> blocks) {
   HEMOCELL_PARTICLE_FIELD* pf = dynamic_cast<HEMOCELL_PARTICLE_FIELD*>(blocks[0]);
-  
+
   for (const auto & pair : pf->get_lpc()) {
-    double volume = 0.;
+    T volume = 0.;
     const int & cid = pair.first;
     const vector<int> & cell = pf->get_particles_per_cell().at(cid);
-    const pluint ctype = pf->particles[cell[0]].celltype;
+    const pluint ctype = pf->particles[cell[0]].sv.celltype;
     for (hemo::Array<plint,3> triangle : (*hemocell->cellfields)[ctype]->mechanics->cellConstants.triangle_list) {
-      const hemo::Array<double,3> & v0 = pf->particles[cell[triangle[0]]].position;
-      const hemo::Array<double,3> & v1 = pf->particles[cell[triangle[1]]].position;
-      const hemo::Array<double,3> & v2 = pf->particles[cell[triangle[2]]].position;
+      const hemo::Array<T,3> & v0 = pf->particles[cell[triangle[0]]].sv.position;
+      const hemo::Array<T,3> & v1 = pf->particles[cell[triangle[1]]].sv.position;
+      const hemo::Array<T,3> & v2 = pf->particles[cell[triangle[2]]].sv.position;
       
       //Volume
-      const double v210 = v2[0]*v1[1]*v0[2];
-      const double v120 = v1[0]*v2[1]*v0[2];
-      const double v201 = v2[0]*v0[1]*v1[2];
-      const double v021 = v0[0]*v2[1]*v1[2];
-      const double v102 = v1[0]*v0[1]*v2[2];
-      const double v012 = v0[0]*v1[1]*v2[2];
+      const T v210 = v2[0]*v1[1]*v0[2];
+      const T v120 = v1[0]*v2[1]*v0[2];
+      const T v201 = v2[0]*v0[1]*v1[2];
+      const T v021 = v0[0]*v2[1]*v1[2];
+      const T v102 = v1[0]*v0[1]*v2[2];
+      const T v012 = v0[0]*v1[1]*v2[2];
       volume += (1.0/6.0)*(-v210+v120+v201-v021-v102+v012);
     }
     info_per_cell[cid].volume = volume;
@@ -62,14 +62,14 @@ void CellInformationFunctionals::CellArea::processGenericBlocks(Box3D domain, st
   HEMOCELL_PARTICLE_FIELD* pf = dynamic_cast<HEMOCELL_PARTICLE_FIELD*>(blocks[0]);
   
   for (const auto & pair : pf->get_lpc()) {
-    double total_area = 0.;
+    T total_area = 0.;
     const int & cid = pair.first;
     const vector<int> & cell = pf->get_particles_per_cell().at(cid);
-    const pluint ctype = pf->particles[cell[0]].celltype;
+    const pluint ctype = pf->particles[cell[0]].sv.celltype;
     for (hemo::Array<plint,3> triangle : (*hemocell->cellfields)[ctype]->mechanics->cellConstants.triangle_list) {
-      const hemo::Array<double,3> & v0 = pf->particles[cell[triangle[0]]].position;
-      const hemo::Array<double,3> & v1 = pf->particles[cell[triangle[1]]].position;
-      const hemo::Array<double,3> & v2 = pf->particles[cell[triangle[2]]].position;
+      const hemo::Array<T,3> & v0 = pf->particles[cell[triangle[0]]].sv.position;
+      const hemo::Array<T,3> & v1 = pf->particles[cell[triangle[1]]].sv.position;
+      const hemo::Array<T,3> & v2 = pf->particles[cell[triangle[2]]].sv.position;
 
       total_area += computeTriangleArea(v0,v1,v2);  
     }
@@ -80,32 +80,36 @@ void CellInformationFunctionals::CellPosition::processGenericBlocks(Box3D domain
   HEMOCELL_PARTICLE_FIELD* pf = dynamic_cast<HEMOCELL_PARTICLE_FIELD*>(blocks[0]);
   
   for (const auto & pair : pf->get_lpc()) {
-    hemo::Array<double,3> position = {0.,0.,0.};
+    hemo::Array<T,3> position = {0.,0.,0.};
     const int & cid = pair.first;
     const vector<int> & cell = pf->get_particles_per_cell().at(cid);
     unsigned int size = 0;
     for (const int pid : cell ) {
       if (pid == -1) { continue; }
       size++;
-      position += pf->particles[pid].position;
+      position += pf->particles[pid].sv.position;
     }
-    info_per_cell[cid].position = position/double(size);
-    info_per_cell[cid].centerLocal = pf->isContainedABS(info_per_cell[cid].position,pf->localDomain);
+    if ( info_per_cell.find(cid) == info_per_cell.end() || !info_per_cell[cid].centerLocal) {
+      info_per_cell[cid].position = position/T(size);
+      info_per_cell[cid].centerLocal = pf->isContainedABS(info_per_cell[cid].position,pf->localDomain);
+    } else {
+     
+    }
   }
 }
 void CellInformationFunctionals::CellStretch::processGenericBlocks(Box3D domain, std::vector<AtomicBlock3D*> blocks) {
   HEMOCELL_PARTICLE_FIELD* pf = dynamic_cast<HEMOCELL_PARTICLE_FIELD*>(blocks[0]);
   
   for (const auto & pair : pf->get_lpc()) {
-    double max_stretch = 0.;
+    T max_stretch = 0.;
     const int & cid = pair.first;
     const vector<int> & cell = pf->get_particles_per_cell().at(cid);
     for (unsigned int i = 0 ; i < cell.size() - 1 ; i++ ) {
       for (unsigned int j = i + 1 ; j < cell.size() ; j ++) {
         if (cell[i] == -1 || cell[j] == -1) {continue;}
-        double distance = sqrt( pow(pf->particles[cell[i]].position[0]-pf->particles[cell[j]].position[0],2) +
-                                pow(pf->particles[cell[i]].position[1]-pf->particles[cell[j]].position[1],2) +
-                                pow(pf->particles[cell[i]].position[2]-pf->particles[cell[j]].position[2],2));
+        T distance = sqrt( pow(pf->particles[cell[i]].sv.position[0]-pf->particles[cell[j]].sv.position[0],2) +
+                                pow(pf->particles[cell[i]].sv.position[1]-pf->particles[cell[j]].sv.position[1],2) +
+                                pow(pf->particles[cell[i]].sv.position[2]-pf->particles[cell[j]].sv.position[2],2));
         max_stretch = max_stretch < distance ? distance : max_stretch;
       }
     }
@@ -116,26 +120,26 @@ void CellInformationFunctionals::CellBoundingBox::processGenericBlocks(Box3D dom
   HEMOCELL_PARTICLE_FIELD* pf = dynamic_cast<HEMOCELL_PARTICLE_FIELD*>(blocks[0]);
   
   for (const auto & pair : pf->get_lpc()) {
-    hemo::Array<double,6> bbox;
+    hemo::Array<T,6> bbox;
     const int & cid = pair.first;
     const vector<int> & cell = pf->get_particles_per_cell().at(cid);
     HemoCellParticle * particle = &pf->particles[cell[0]];
     
-    bbox[0] = particle->position[0];
-    bbox[1] = particle->position[0];
-    bbox[2] = particle->position[1];
-    bbox[3] = particle->position[1];
-    bbox[4] = particle->position[2];
-    bbox[5] = particle->position[2];
+    bbox[0] = particle->sv.position[0];
+    bbox[1] = particle->sv.position[0];
+    bbox[2] = particle->sv.position[1];
+    bbox[3] = particle->sv.position[1];
+    bbox[4] = particle->sv.position[2];
+    bbox[5] = particle->sv.position[2];
     
     for (const int pid : cell ) {
       particle = &pf->particles[pid];
-      bbox[0] = bbox[0] > particle->position[0] ? particle->position[0] : bbox[0];
-      bbox[1] = bbox[1] < particle->position[0] ? particle->position[0] : bbox[1];
-      bbox[2] = bbox[2] > particle->position[1] ? particle->position[1] : bbox[2];
-      bbox[3] = bbox[3] < particle->position[1] ? particle->position[1] : bbox[3];
-      bbox[4] = bbox[4] > particle->position[2] ? particle->position[2] : bbox[4];
-      bbox[5] = bbox[5] < particle->position[2] ? particle->position[2] : bbox[5];
+      bbox[0] = bbox[0] > particle->sv.position[0] ? particle->sv.position[0] : bbox[0];
+      bbox[1] = bbox[1] < particle->sv.position[0] ? particle->sv.position[0] : bbox[1];
+      bbox[2] = bbox[2] > particle->sv.position[1] ? particle->sv.position[1] : bbox[2];
+      bbox[3] = bbox[3] < particle->sv.position[1] ? particle->sv.position[1] : bbox[3];
+      bbox[4] = bbox[4] > particle->sv.position[2] ? particle->sv.position[2] : bbox[4];
+      bbox[5] = bbox[5] < particle->sv.position[2] ? particle->sv.position[2] : bbox[5];
 
     }
     info_per_cell[cid].bbox = bbox;
@@ -156,48 +160,62 @@ void CellInformationFunctionals::CellType::processGenericBlocks(Box3D domain, st
   for (const auto & pair : pf->get_lpc()) {
     const int & cid = pair.first;
 
-    info_per_cell[cid].cellType = pf->particles[pf->get_particles_per_cell().at(cid)[0]].celltype;
+    info_per_cell[cid].cellType = pf->particles[pf->get_particles_per_cell().at(cid)[0]].sv.celltype;
   }
 }
 
 void CellInformationFunctionals::calculateCellVolume(HemoCell * hemocell_) {
   hemocell = hemocell_;
+  hemocell->cellfields->syncEnvelopes();
+  hemocell->cellfields->deleteIncompleteCells(false);
   vector<MultiBlock3D*> wrapper;
   wrapper.push_back(hemocell->cellfields->immersedParticles);
   applyTimedProcessingFunctional(new CellVolume(),hemocell->cellfields->immersedParticles->getBoundingBox(),wrapper);
 }
 void CellInformationFunctionals::calculateCellArea(HemoCell * hemocell_) {
   hemocell = hemocell_;
+  hemocell->cellfields->syncEnvelopes();
+  hemocell->cellfields->deleteIncompleteCells(false);
   vector<MultiBlock3D*> wrapper;
   wrapper.push_back(hemocell->cellfields->immersedParticles);
   applyTimedProcessingFunctional(new CellArea(),hemocell->cellfields->immersedParticles->getBoundingBox(),wrapper);
 }
 void CellInformationFunctionals::calculateCellPosition(HemoCell * hemocell_) {
   hemocell = hemocell_;
+  hemocell->cellfields->syncEnvelopes();
+  hemocell->cellfields->deleteIncompleteCells(false);
   vector<MultiBlock3D*> wrapper;
   wrapper.push_back(hemocell->cellfields->immersedParticles);
   applyTimedProcessingFunctional(new CellPosition(),hemocell->cellfields->immersedParticles->getBoundingBox(),wrapper);
 }
 void CellInformationFunctionals::calculateCellStretch(HemoCell * hemocell_) {
   hemocell = hemocell_;
+  hemocell->cellfields->syncEnvelopes();
+  hemocell->cellfields->deleteIncompleteCells(false);
   vector<MultiBlock3D*> wrapper;
   wrapper.push_back(hemocell->cellfields->immersedParticles);
   applyTimedProcessingFunctional(new CellStretch(),hemocell->cellfields->immersedParticles->getBoundingBox(),wrapper);
 }
 void CellInformationFunctionals::calculateCellBoundingBox(HemoCell * hemocell_) {
   hemocell = hemocell_;
+  hemocell->cellfields->syncEnvelopes();
+  hemocell->cellfields->deleteIncompleteCells(false);
   vector<MultiBlock3D*> wrapper;
   wrapper.push_back(hemocell->cellfields->immersedParticles);
   applyTimedProcessingFunctional(new CellBoundingBox(),hemocell->cellfields->immersedParticles->getBoundingBox(),wrapper);
 }
 void CellInformationFunctionals::calculateCellAtomicBlock(HemoCell* hemocell_) {
   hemocell = hemocell_;
+  hemocell->cellfields->syncEnvelopes();
+  hemocell->cellfields->deleteIncompleteCells(false);
   vector<MultiBlock3D*> wrapper;
   wrapper.push_back(hemocell->cellfields->immersedParticles);
   applyTimedProcessingFunctional(new CellAtomicBlock(),hemocell->cellfields->immersedParticles->getBoundingBox(),wrapper);
 }
 void CellInformationFunctionals::calculateCellType(HemoCell* hemocell_) {
   hemocell = hemocell_;
+  hemocell->cellfields->syncEnvelopes();
+  hemocell->cellfields->deleteIncompleteCells(false);
   vector<MultiBlock3D*> wrapper;
   wrapper.push_back(hemocell->cellfields->immersedParticles);
   applyTimedProcessingFunctional(new CellType(),hemocell->cellfields->immersedParticles->getBoundingBox(),wrapper);
@@ -212,10 +230,9 @@ pluint CellInformationFunctionals::getTotalNumberOfCells(HemoCell* hemocell) {
       localCells++;
     }
   }
-  
   map<int,pluint> cells_per_proc;
   cells_per_proc[global::mpi().getRank()] = localCells;
-  HemoCellGatheringFunctional<pluint>::gather(cells_per_proc,global::mpi().getSize());
+  HemoCellGatheringFunctional<pluint>::gather(cells_per_proc);
   pluint total = 0;
   for (const auto & pair : cells_per_proc) {
     total += pair.second;
@@ -237,7 +254,7 @@ pluint CellInformationFunctionals::getNumberOfCellsFromType(HemoCell* hemocell, 
   
   map<int,pluint> cells_per_proc;
   cells_per_proc[global::mpi().getRank()] = localCells;
-  HemoCellGatheringFunctional<pluint>::gather(cells_per_proc,global::mpi().getSize());
+  HemoCellGatheringFunctional<pluint>::gather(cells_per_proc);
   pluint total = 0;
   for (const auto & pair : cells_per_proc) {
     total += pair.second;

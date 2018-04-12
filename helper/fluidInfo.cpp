@@ -26,18 +26,18 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #include "hemocell.h"
 
 void GatherFluidVelocity::processGenericBlocks(Box3D domain, std::vector<AtomicBlock3D*> blocks) {
-    BlockLattice3D<double,DESCRIPTOR>* ff = dynamic_cast<BlockLattice3D<double,DESCRIPTOR>*>(blocks[0]);
+    BlockLattice3D<T,DESCRIPTOR>* ff = dynamic_cast<BlockLattice3D<T,DESCRIPTOR>*>(blocks[0]);
     HEMOCELL_PARTICLE_FIELD* pf = dynamic_cast<HEMOCELL_PARTICLE_FIELD*>(blocks[1]);
-    plb::Array<double,3> vel_vec;
-    ff->grid[domain.x0][domain.y0][domain.z0].computeVelocity(vel_vec);
-    double vel = sqrt(vel_vec[0]*vel_vec[0]+vel_vec[1]*vel_vec[1]+vel_vec[2]*vel_vec[2]);
-    double min=vel,max=vel,avg=0.;
+    plb::Array<T,3> vel_vec;
+    ff->get(domain.x0,domain.y0,domain.z0).computeVelocity(vel_vec);
+    T vel = sqrt(vel_vec[0]*vel_vec[0]+vel_vec[1]*vel_vec[1]+vel_vec[2]*vel_vec[2]);
+    T min=vel,max=vel,avg=0.;
     
     
     for (plint iX=domain.x0; iX<=domain.x1; ++iX) {
       for (plint iY=domain.y0; iY<=domain.y1; ++iY) {
         for (plint iZ=domain.z0; iZ<=domain.z1; ++iZ) {
-          ff->grid[iX][iY][iZ].computeVelocity(vel_vec);
+          ff->get(iX,iY,iZ).computeVelocity(vel_vec);
           vel = sqrt(vel_vec[0]*vel_vec[0]+vel_vec[1]*vel_vec[1]+vel_vec[2]*vel_vec[2]);
           min = min > vel ? vel : min;
           max = max < vel ? vel : max;
@@ -52,23 +52,23 @@ void GatherFluidVelocity::processGenericBlocks(Box3D domain, std::vector<AtomicB
     gatherValues[pf->atomicBlockId].ncells = domain.nCells();
 }
 void GatherFluidForce::processGenericBlocks(Box3D domain, std::vector<AtomicBlock3D*> blocks) {
-    BlockLattice3D<double,DESCRIPTOR>* ff = dynamic_cast<BlockLattice3D<double,DESCRIPTOR>*>(blocks[0]);
+    BlockLattice3D<T,DESCRIPTOR>* ff = dynamic_cast<BlockLattice3D<T,DESCRIPTOR>*>(blocks[0]);
     HEMOCELL_PARTICLE_FIELD* pf = dynamic_cast<HEMOCELL_PARTICLE_FIELD*>(blocks[1]);
-    hemo::Array<double,3> vel_vec;
-    vel_vec[0] = ff->grid[domain.x0][domain.y0][domain.z0].external.data[0];
-    vel_vec[1] = ff->grid[domain.x0][domain.y0][domain.z0].external.data[1];
-    vel_vec[2] = ff->grid[domain.x0][domain.y0][domain.z0].external.data[2];
+    hemo::Array<T,3> vel_vec;
+    vel_vec[0] = ff->get(domain.x0,domain.y0,domain.z0).external.data[0];
+    vel_vec[1] = ff->get(domain.x0,domain.y0,domain.z0).external.data[1];
+    vel_vec[2] = ff->get(domain.x0,domain.y0,domain.z0).external.data[2];
 
-    double vel = sqrt(vel_vec[0]*vel_vec[0]+vel_vec[1]*vel_vec[1]+vel_vec[2]*vel_vec[2]);
-    double min=vel,max=vel,avg=0.;
+    T vel = sqrt(vel_vec[0]*vel_vec[0]+vel_vec[1]*vel_vec[1]+vel_vec[2]*vel_vec[2]);
+    T min=vel,max=vel,avg=0.;
     
     
     for (plint iX=domain.x0; iX<=domain.x1; ++iX) {
       for (plint iY=domain.y0; iY<=domain.y1; ++iY) {
         for (plint iZ=domain.z0; iZ<=domain.z1; ++iZ) {
-          vel_vec[0] = ff->grid[iX][iY][iZ].external.data[0];
-          vel_vec[1] = ff->grid[iX][iY][iZ].external.data[1];
-          vel_vec[2] = ff->grid[iX][iY][iZ].external.data[2];
+          vel_vec[0] = ff->get(iX,iY,iZ).external.data[0];
+          vel_vec[1] = ff->get(iX,iY,iZ).external.data[1];
+          vel_vec[2] = ff->get(iX,iY,iZ).external.data[2];
           
           vel = sqrt(vel_vec[0]*vel_vec[0]+vel_vec[1]*vel_vec[1]+vel_vec[2]*vel_vec[2]);
           min = min > vel ? vel : min;
@@ -92,7 +92,7 @@ FluidStatistics FluidInfo::calculateVelocityStatistics(HemoCell* hemocell) {
   wrapper.push_back(hemocell->cellfields->immersedParticles);
   applyTimedProcessingFunctional(new GatherFluidVelocity(gatherValues),hemocell->cellfields->immersedParticles->getBoundingBox(),wrapper);
   int numAtomicBlock = hemocell->lattice->getMultiBlockManagement().getSparseBlockStructure().getNumBlocks();
-  HemoCellGatheringFunctional<FluidStatistics>::gather(gatherValues,numAtomicBlock);
+  HemoCellGatheringFunctional<FluidStatistics>::gather(gatherValues);
   
   FluidStatistics result = gatherValues.begin()->second;
   result.avg = 0.;
@@ -121,7 +121,7 @@ FluidStatistics FluidInfo::calculateForceStatistics(HemoCell* hemocell) {
   wrapper.push_back(hemocell->cellfields->immersedParticles);
   applyTimedProcessingFunctional(new GatherFluidForce(gatherValues),hemocell->cellfields->immersedParticles->getBoundingBox(),wrapper);
   int numAtomicBlock = hemocell->lattice->getMultiBlockManagement().getSparseBlockStructure().getNumBlocks();
-  HemoCellGatheringFunctional<FluidStatistics>::gather(gatherValues,numAtomicBlock);
+  HemoCellGatheringFunctional<FluidStatistics>::gather(gatherValues);
   
   FluidStatistics result = gatherValues.begin()->second;
   result.avg = 0.;

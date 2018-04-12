@@ -62,7 +62,17 @@ namespace hemo {
       }
       return *this;
     }
-        
+    
+    inline Array<_Tp, 3> &
+    operator+=(const plb::Dot3D & __two) {
+      for(std::size_t i = 0 ; i < _Nm ; i++ ) {
+        (*this)[0] += __two.x;
+        (*this)[1] += __two.y;
+        (*this)[2] += __two.z;
+
+      }
+      return *this;
+    }    
     inline Array<_Tp, _Nm> &
     operator*=(const _Tp & mul) {
       for(std::size_t i = 0 ; i < _Nm ; i++ ) {
@@ -151,12 +161,21 @@ namespace hemo {
     return ret;
   }
   
-  template<typename _Tp, std::size_t _Nm>
-  inline Array<_Tp, _Nm> operator*(const _Tp mul, const Array<_Tp, _Nm> & one) {
+  template<typename _Tp, std::size_t _Nm, typename _Tp2>
+  inline Array<_Tp, _Nm> operator*(const _Tp2 mul, const Array<_Tp, _Nm> & one) {
     Array<_Tp, _Nm> ret;
     for (std::size_t i = 0 ; i < _Nm ; i++ ) {
       ret[i] = one[i]*mul;
     }
+    return ret;
+  }
+
+  template<typename _Tp>
+  inline Array<_Tp, 3> operator-(const Array<_Tp,3> & one, plb::Dot3D two) {
+    Array<_Tp, 3> ret;
+    ret[0] = one[0]-two.x;
+    ret[1] = one[1]-two.y;
+    ret[2] = one[2]-two.z;
     return ret;
   }
   
