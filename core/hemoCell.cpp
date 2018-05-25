@@ -27,9 +27,6 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #include <unistd.h>
 #include <limits.h>
 
-//Required as extern from constant_defaults
-int verbose = 0;
-
 volatile sig_atomic_t interrupted = 0;
 void set_interrupt(int signum) {
   interrupted = 1;
@@ -37,63 +34,13 @@ void set_interrupt(int signum) {
 
 HemoCell::HemoCell(char * configFileName, int argc, char * argv[]) {
   plbInit(&(argc),&(argv));
-  printHeader();
 
-	//TODO This should be done through hemocell config, not some palabos global
-  global::directories().setOutputDir("./tmp/");
-  global::directories().setInputDir("./");
-  global::IOpolicy().activateParallelIO(true);
-  global::IOpolicy().setStlFilesHaveLowerBound(false);
-    hlog << "(HemoCell) (Config) reading " << configFileName << endl;
+  pcout << "(HemoCell) (Config) reading " << configFileName << endl;
   cfg = new Config(configFileName);
   documentXML = new XMLreader(configFileName);
-  try {
-    verbose = (*cfg)["verbose"].read<int>();
-  } catch (std::invalid_argument & exeption) {}
-
-  //setting outdir
-  try {
-    std::string outDir = (*cfg)["parameters"]["outputDirectory"].read<string>() + "/";
-    if (outDir[0] != '/') {
-          outDir = "./" + outDir;
-    }
-    global::directories().setOutputDir(outDir);
-  } catch (std::invalid_argument & exeption) {}
-  mkpath((global::directories().getOutputDir() + "/hdf5/").c_str(), 0777);
-
-  //Setting logfile and logdir  
-  global::directories().setLogOutDir("./log/");
-  try {
-    std::string outDir = (*cfg)["parameters"]["logDirectory"].read<string>() + "/";
-    if (outDir[0] != '/') {
-          outDir = "./" + outDir;
-    }
-    global::directories().setLogOutDir(outDir);
-  } catch (std::invalid_argument & exeption) {}
-  string logfilename = "logfile";
-  try {
-    logfilename = (*cfg)["parameters"]["logFile"].read<string>();
-  } catch (std::invalid_argument & exeption) {}
-  mkpath(global::directories().getLogOutDir().c_str(), 0777);
-
-  if (global::mpi().getRank() == 0) {
-    string filename =  global::directories().getLogOutDir() + logfilename;
-    if (!file_exists(filename)) { 
-      hlog.logfile.open(global::directories().getLogOutDir() + logfilename , std::fstream::out );
-      goto logfile_open_done; 
-    }
-    for (int i = 0; i < INT_MAX; i++) {
-      if (!file_exists(filename + "." + to_string(i))) {
-        hlog.logfile.open(filename + "." + to_string(i) , std::fstream::out);
-        goto logfile_open_done; 
-      }
-    }
-    logfile_open_done:
-    if (!hlog.logfile.good()) {
-      pcerr << "(HemoCell) (LogFile) Error opening logfile, exiting" << endl;
-      exit(1);
-    }
-  }
+  loadDirectories(configFileName, cfg);
+  loadGlobalConfigValues(cfg);
+  printHeader();
   
   // start clock for basic performance feedback
   lastOutputAt = 0;
@@ -149,11 +96,11 @@ void HemoCell::setFluidOutputs(vector<int> outputs) {
 void HemoCell::setSystemPeriodicity(unsigned int axis, bool bePeriodic) {
   if (lattice == 0) {
     pcerr << "(HemoCell) (Periodicity) please create a lattice before trying to set the periodicity" << endl;
-    exit(0);    
+    exit(1);    
   }
   if (cellfields->immersedParticles == 0) {
     pcerr << "(HemoCell) (Periodicity) please create a particlefield (hemocell.initializeCellfields()) before trying to set the periodicity" << endl;
-    exit(0);   
+    exit(1);   
   }
   lattice->periodicity().toggle(axis,bePeriodic);
   cellfields->immersedParticles->periodicity().toggle(axis, bePeriodic);
@@ -201,8 +148,11 @@ void HemoCell::writeOutput() {
     cellfields->applyBoundaryRepulsionForce();
   }
   cellfields->syncEnvelopes();
-  cellfields->deleteIncompleteCells(false);
-
+  if (globalConfigValues.cellsDeletedInfo) {
+    cellfields->deleteIncompleteCells(true);
+  } else {
+    cellfields->deleteIncompleteCells(false);   
+  }
   //Repoint surfaceparticle forces for output
   cellfields->separate_force_vectors();
 
@@ -225,14 +175,14 @@ void HemoCell::writeOutput() {
 
   //Repoint surfaceparticle forces for speed
   cellfields->unify_force_vectors();
-
+  cellfields->syncEnvelopes();
   // Continue with performance measurement
   global::timer("atOutput").restart();
 }
 
 void HemoCell::checkExitSignals() {
   if (interrupted == 1) {
-    cout << endl << "Caught Signal, saving work and quitting!" << endl;
+    cout << endl << "Caught Signal, saving work and quitting!" << endl << std::flush;
     exit(1);
   }
 }
@@ -268,6 +218,9 @@ void HemoCell::iterate() {
   
   //We can safely delete non-local cells here, assuming model timestep is divisible by velocity timestep
   if(iter % cellfields->particleVelocityUpdateTimescale == 0) {
+    if (globalConfigValues.cellsDeletedInfo) {
+      cellfields->deleteIncompleteCells(true);
+    }
     cellfields->deleteNonLocalParticles(3);
   }
 
@@ -290,19 +243,18 @@ void HemoCell::setMaterialTimeScaleSeparation(string name, unsigned int separati
   (*cellfields)[name]->timescale = separation;
   if (separation%cellfields->particleVelocityUpdateTimescale!=0) {
      pcout << "(HemoCell) Error, Velocity timescale separation cannot divide this material timescale separation, exiting ..." <<endl;
-     exit(0);
+     exit(1);
   }
 }
 
 void HemoCell::setParticleVelocityUpdateTimeScaleSeparation(unsigned int separation) {
   hlog << "(HemoCell) (Timescale separation) Setting update separation of all particles to " << separation << " timesteps" << endl;
-  if(verbose >= 2) {
-    hlog << "(HemoCell) WARNING this introduces great errors" << endl;
-  }
+  hlogfile << "(HemoCell) WARNING this introduces great errors" << endl;
+
   for (unsigned int i = 0; i < cellfields->size() ; i++) {
     if ((*cellfields)[i]->timescale%separation !=0) {
       pcout << "(HemoCell) Error, Velocity timescale separation cannot divide all material timescale separations, exiting ..." <<endl;
-      exit(0);
+      exit(1);
     }
   }
   cellfields->particleVelocityUpdateTimescale = separation;
@@ -313,7 +265,7 @@ void HemoCell::setRepulsionTimeScaleSeperation(unsigned int separation){
   cellfields->repulsionTimescale = separation;
   if (separation%cellfields->particleVelocityUpdateTimescale!=0) {
      pcout << "(HemoCell) Error, Velocity timescale separation cannot divide this repulsion timescale separation, exiting ..." <<endl;
-     exit(0);
+     exit(1);
   }
 }
 
@@ -326,10 +278,8 @@ void HemoCell::setMinimumDistanceFromSolid(string name, T distance) {
 }
 
 void HemoCell::setRepulsion(T repulsionConstant, T repulsionCutoff) {
-  hlog << "(HemoCell) (Repulsion) Setting repulsion constant to " << repulsionConstant << ". repulsionCutoff to" << repulsionCutoff << " µm" << endl;
-  if(verbose >= 2) {
-    pcout << "(HemoCell) (Repulsion) Enabling repulsion" << endl;
-  }
+  hlog << "(HemoCell) (Repulsion) Setting repulsion constant to " << repulsionConstant << ". repulsionCutoff to" << repulsionCutoff << " Âµm" << endl;
+  hlogfile << "(HemoCell) (Repulsion) Enabling repulsion" << endl;
   cellfields->repulsionConstant = repulsionConstant;
   cellfields->repulsionCutoff = repulsionCutoff*(1e-6/param::dx);
   repulsionEnabled = true;
@@ -337,13 +287,11 @@ void HemoCell::setRepulsion(T repulsionConstant, T repulsionCutoff) {
 
 void HemoCell::enableBoundaryParticles(T boundaryRepulsionConstant, T boundaryRepulsionCutoff, unsigned int timestep) {
   cellfields->populateBoundaryParticles();
-  hlog << "(HemoCell) (Repulsion) Setting boundary repulsion constant to " << boundaryRepulsionConstant << ". boundary repulsionCutoff to" << boundaryRepulsionCutoff << " µm" << endl;
-  if(verbose >= 2) {
-    pcout << "(HemoCell) (Repulsion) Enabling boundary repulsion" << endl;
-  }
+  hlog << "(HemoCell) (Repulsion) Setting boundary repulsion constant to " << boundaryRepulsionConstant << ". boundary repulsionCutoff to" << boundaryRepulsionCutoff << " Âµm" << endl;
+  hlogfile << "(HemoCell) (Repulsion) Enabling boundary repulsion" << endl;
   if (timestep%cellfields->particleVelocityUpdateTimescale!=0) {
      pcout << "(HemoCell) Error, Velocity timescale separation cannot divide this repulsion timescale separation, exiting ..." <<endl;
-     exit(0);
+     exit(1);
   }
   cellfields->boundaryRepulsionConstant = boundaryRepulsionConstant;
   cellfields->boundaryRepulsionCutoff = boundaryRepulsionCutoff*(1e-6/param::dx);

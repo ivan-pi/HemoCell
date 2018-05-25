@@ -44,8 +44,7 @@ void outputHDF5(hsize_t* dim, hsize_t* chunk, hid_t& file_id, string& name, floa
 
 void writeFluidField_HDF5(HemoCellFields& cellfields, T dx, T dt, plint iter, string preString) {
   if(std::find(cellfields.desiredFluidOutputVariables.begin(), cellfields.desiredFluidOutputVariables.end(), OUTPUT_FORCE) != cellfields.desiredFluidOutputVariables.end()) {
-    if(verbose >= 1)
-      pcout << "(FluidOutput) (OutputForce) The force on the fluid field is reset to zero, If there is a bodyforce, reset it after this function" << endl; 
+    hlogfile << "(FluidOutput) (OutputForce) The force on the fluid field is reset to zero, If there is a bodyforce, reset it after this output function (FluidField write force, OUTPUT_FORCE)" << endl; 
     cellfields.spreadParticleForce();
   }
   WriteFluidField * wff = new WriteFluidField(cellfields, *cellfields.lattice,iter,"Fluid",dx,dt);
@@ -312,7 +311,7 @@ float * WriteFluidField::outputShearStress() {
 
   if (cellfields.hemocell.outputInSiUnits) {
     for (unsigned int i = 0 ; i < (*nCells)*6 ; i++) {
-      output[i] = output[i]*param::dm*((param::dx*param::dx)/(param::dt*param::dt));
+      output[i] = output[i]*(param::df/(param::dx*param::dx));
     }
   }
 

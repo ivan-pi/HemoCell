@@ -441,9 +441,11 @@ int HemoCellParticleField::deleteIncompleteCells(pluint ctype, bool verbose) {
 
       //issue warning
       if (verbose) {
-        if (isContainedABS(particles[particles_per_cell.at(cellid)[i]].sv.position,localDomain) && !warningIssued) {
+        if (!warningIssued) {
+          if (isContainedABS(particles[particles_per_cell.at(cellid)[i]].sv.position,localDomain)) {
                   issueWarning(particles[particles_per_cell.at(cellid)[i]]);
-          warningIssued = true;
+            warningIssued = true;
+          }
         }
       }
       
@@ -461,7 +463,6 @@ int HemoCellParticleField::deleteIncompleteCells(pluint ctype, bool verbose) {
 
 int HemoCellParticleField::deleteIncompleteCells(const bool verbose) {
   int deleted = 0;
-
   const map<int,vector<int>> & particles_per_cell = get_particles_per_cell();
   //Warning, TODO, high complexity, should be rewritten 
   //For now abuse tagging and the remove function
@@ -483,9 +484,11 @@ int HemoCellParticleField::deleteIncompleteCells(const bool verbose) {
 
       //issue warning
       if (verbose) {
-        if (isContainedABS(particles[particles_per_cell.at(cellid)[i]].sv.position,localDomain) && !warningIssued) {
+        if (!warningIssued) {
+          if (isContainedABS(particles[particles_per_cell.at(cellid)[i]].sv.position,localDomain)) {
                   issueWarning(particles[particles_per_cell.at(cellid)[i]]);
-          warningIssued = true;
+            warningIssued = true;
+          }
         }
       }
       
@@ -560,29 +563,35 @@ void HemoCellParticleField::unifyForceVectors() {
 void HemoCellParticleField::applyConstitutiveModel(bool forced) {
   map<int,vector<HemoCellParticle*>> * ppc_new = new map<int,vector<HemoCellParticle*>>();
   const map<int,vector<int>> & particles_per_cell = get_particles_per_cell();
-  const map<int,bool> & lpc = get_lpc();
+  map<int,bool> lpc;
   //Fill it here, probably needs optimization, ah well ...
   for (const auto & pair : particles_per_cell) {
-    if (lpc.find(pair.first) == lpc.end() || !lpc.at(pair.first)) { continue; } //Not local, continue
     const int & cid = pair.first;
     const vector<int> & cell = pair.second; 
     (*ppc_new)[cid].resize(cell.size());
     for (unsigned int i = 0 ; i < cell.size() ; i++) {
       if (cell[i] == -1) {
         (*ppc_new).erase(cid); //not complete, remove entry
-        break;
+        goto no_add_lpc;
       } else {
         (*ppc_new)[cid][i] = &particles[cell[i]];
       }
     }
+    lpc[cid]=true;
+    no_add_lpc:;
   }
   
   for (pluint ctype = 0; ctype < (*cellFields).size(); ctype++) {
     if ((*cellFields).hemocell.iter % (*cellFields)[ctype]->timescale == 0 || forced) {
       vector<HemoCellParticle*> found;
       findParticles(getBoundingBox(),found,ctype);
-      for (HemoCellParticle* particle : found) {
-        particle->sv.force = {0.,0.,0.};        
+      if (found.size() > 0) {
+        //only reset forces when the forces actually point at it.
+        if (found[0]->force_area == &found[0]->sv.force) {
+          for (HemoCellParticle* particle : found) {
+            particle->sv.force = {0.,0.,0.};     
+          }
+        }
       }
       (*cellFields)[ctype]->mechanics->ParticleMechanics(*ppc_new,lpc,ctype);
     }
@@ -663,29 +672,24 @@ void HemoCellParticleField::applyRepulsionForce(bool forced) {
 
 
 void HemoCellParticleField::interpolateFluidVelocity(Box3D domain) {
-  vector<HemoCellParticle*> localParticles;
-  findParticles(domain,localParticles);
-  //TODO, remove casting
-  HemoCellParticle * sparticle;
   //Prealloc is nice
   hemo::Array<T,3> velocity;
   plb::Array<T,3> velocity_comp;
 
-  for (pluint i = 0; i < localParticles.size(); i++ ) {
-    sparticle = localParticles[i];
-    if (sparticle->sv.fromPreInlet) { continue; }
+  for (HemoCellParticle &particle:particles) {
+    if (particle.sv.fromPreInlet) { continue; }
     //Clever trick to allow for different kernels for different particle types.
-    (*cellFields)[sparticle->sv.celltype]->kernelMethod(*atomicLattice,sparticle);
+    (*cellFields)[particle.sv.celltype]->kernelMethod(*atomicLattice,&particle);
 
     //We have the kernels, now calculate the velocity of the particles.
     //Palabos developers, sorry for not using a functional...
     velocity = {0.0,0.0,0.0};
-    for (pluint j = 0; j < sparticle->kernelLocations.size(); j++) {
+    for (pluint j = 0; j < particle.kernelLocations.size(); j++) {
       //Yay for direct access
-      sparticle->kernelLocations[j]->computeVelocity(velocity_comp);
-      velocity += (velocity_comp * sparticle->kernelWeights[j]);
+      particle.kernelLocations[j]->computeVelocity(velocity_comp);
+      velocity += (velocity_comp * particle.kernelWeights[j]);
     }
-    sparticle->sv.v = velocity;
+    particle.sv.v = velocity;
   }
 
 }

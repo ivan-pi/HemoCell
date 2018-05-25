@@ -38,9 +38,8 @@ int main(int argc, char *argv[]) {
   HemoCell hemocell(argv[1], argc, argv);
   Config * cfg = hemocell.cfg;
 
-  if (verbose) {
-    pcout << "(PipeFlow) (Geometry) reading and voxelizing STL file " << (*cfg)["domain"]["geometry"].read<string>() << endl; 
-  }
+  hlogfile << "(PipeFlow) (Geometry) reading and voxelizing STL file " << (*cfg)["domain"]["geometry"].read<string>() << endl; 
+
   MultiScalarField3D<int> *flagMatrix = 0; 
   VoxelizedDomain3D<T> * voxelizedDomain = 0; 
   getFlagMatrixFromSTL((*cfg)["domain"]["geometry"].read<string>(),  
@@ -50,7 +49,7 @@ int main(int argc, char *argv[]) {
                        voxelizedDomain, flagMatrix,  
                        (*cfg)["domain"]["blockSize"].read<int>()); 
 
-  param::lbm_pipe_parameters((*cfg),(*cfg)["domain"]["refDirN"].read<int>());
+  param::lbm_pipe_parameters((*cfg),flagMatrix);
   param::printParameters();
   
   hemocell.lattice = new MultiBlockLattice3D<T, DESCRIPTOR>(
@@ -67,8 +66,7 @@ int main(int argc, char *argv[]) {
   hemocell.latticeEquilibrium(1.,plb::Array<T, 3>(0.,0.,0.));
 
   //Driving Force
-  T rPipe = (*cfg)["domain"]["refDirN"].read<int>()/2.0;
-  T poiseuilleForce =  8 * param::nu_lbm * (param::u_lbm_max * 0.5) / rPipe / rPipe;
+  T poiseuilleForce =  8 * param::nu_lbm * (param::u_lbm_max * 0.5) / param::pipe_radius / param::pipe_radius;
   setExternalVector(*hemocell.lattice, (*hemocell.lattice).getBoundingBox(),
                     DESCRIPTOR<T>::ExternalField::forceBeginsAt,
                     plb::Array<T, DESCRIPTOR<T>::d>(poiseuilleForce, 0.0, 0.0));
@@ -115,7 +113,7 @@ int main(int argc, char *argv[]) {
   //hemocell.doRestructure(false); // cause errors
   
   if (hemocell.iter == 0) {
-    pcout << "(PipeFlow) fresh start: warming up cell-free fluid domain for "  << (*cfg)["parameters"]["warmup"].read<plint>() << " iterations..." << endl;
+    hlog << "(PipeFlow) fresh start: warming up cell-free fluid domain for "  << (*cfg)["parameters"]["warmup"].read<plint>() << " iterations..." << endl;
     for (plint itrt = 0; itrt < (*cfg)["parameters"]["warmup"].read<plint>(); ++itrt) { 
       hemocell.lattice->collideAndStream(); 
     }
@@ -125,7 +123,7 @@ int main(int argc, char *argv[]) {
   unsigned int tmeas = (*cfg)["sim"]["tmeas"].read<unsigned int>();
   unsigned int tcheckpoint = (*cfg)["sim"]["tcheckpoint"].read<unsigned int>();
 
-  pcout << "(PipeFlow) Starting simulation..." << endl;
+  hlog << "(PipeFlow) Starting simulation..." << endl;
 
   while (hemocell.iter < tmax ) {
     hemocell.iterate();
@@ -145,14 +143,14 @@ int main(int argc, char *argv[]) {
      }
    */
     if (hemocell.iter % tmeas == 0) {
-        pcout << "(main) Stats. @ " <<  hemocell.iter << " (" << hemocell.iter * param::dt << " s):" << endl;
-        pcout << "\t # of cells: " << CellInformationFunctionals::getTotalNumberOfCells(&hemocell);
-        pcout << " | # of RBC: " << CellInformationFunctionals::getNumberOfCellsFromType(&hemocell, "RBC_HO");
-        pcout << ", PLT: " << CellInformationFunctionals::getNumberOfCellsFromType(&hemocell, "PLT") << endl;
+        hlog << "(main) Stats. @ " <<  hemocell.iter << " (" << hemocell.iter * param::dt << " s):" << endl;
+        hlog << "\t # of cells: " << CellInformationFunctionals::getTotalNumberOfCells(&hemocell);
+        hlog << " | # of RBC: " << CellInformationFunctionals::getNumberOfCellsFromType(&hemocell, "RBC_HO");
+        hlog << ", PLT: " << CellInformationFunctionals::getNumberOfCellsFromType(&hemocell, "PLT") << endl;
         FluidStatistics finfo = FluidInfo::calculateVelocityStatistics(&hemocell); T toMpS = param::dx / param::dt;
-        pcout << "\t Velocity  -  max.: " << finfo.max * toMpS << " m/s, mean: " << finfo.avg * toMpS<< " m/s, rel. app. viscosity: " << (param::u_lbm_max*0.5) / finfo.avg << endl;
+        hlog << "\t Velocity  -  max.: " << finfo.max * toMpS << " m/s, mean: " << finfo.avg * toMpS<< " m/s, rel. app. viscosity: " << (param::u_lbm_max*0.5) / finfo.avg << endl;
         ParticleStatistics pinfo = ParticleInfo::calculateForceStatistics(&hemocell); T topN = param::df * 1.0e12;
-        pcout << "\t Force  -  min.: " << pinfo.min * topN << " pN, max.: " << pinfo.max * topN << " pN (" << pinfo.max << " lf), mean: " << pinfo.avg * topN << " pN" << endl;
+        hlog << "\t Force  -  min.: " << pinfo.min * topN << " pN, max.: " << pinfo.max * topN << " pN (" << pinfo.max << " lf), mean: " << pinfo.avg * topN << " pN" << endl;
 
         // Additional useful stats, if needed
         //finfo = FluidInfo::calculateForceStatistics(&hemocell);
@@ -170,7 +168,7 @@ int main(int argc, char *argv[]) {
     }
   }
 
-  pcout << "(main) Simulation finished :) " << endl;
+  hlog << "(main) Simulation finished :) " << endl;
 
   return 0;
 }
