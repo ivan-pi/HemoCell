@@ -23,6 +23,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 #include "hemoCellParticleDataTransfer.h"
 #include "hemoCellParticleField.h"
+#include "hemocell.h"
 
 /* *************** class HemoParticleDataTransfer3D ************************ */
 
@@ -59,6 +60,7 @@ plint HemoCellParticleDataTransfer::staticCellSize() const {
 void HemoCellParticleDataTransfer::send (
         Box3D domain, std::vector<char>& buffer, modif::ModifT kind ) const
 {
+  constParticleField->cellFields->hemocell.statistics.getCurrent()["MpiSend"].start();
     buffer.clear();
     // Particles, by definition, are dynamic data, and they need to
     //   be reconstructed in any case. Therefore, the send procedure
@@ -74,6 +76,7 @@ void HemoCellParticleDataTransfer::send (
         serialize(*foundParticles[iParticle], buffer);
         }
     }
+  constParticleField->cellFields->hemocell.statistics.getCurrent().stop();
 }
 
 void HemoCellParticleDataTransfer::receive (
@@ -85,6 +88,8 @@ void HemoCellParticleDataTransfer::receive (
     // Particles, by definition, are dynamic data, and they need to
     //   be reconstructed in any case. Therefore, the receive procedure
     //   is run whenever kind is one of the dynamic types.
+   constParticleField->cellFields->hemocell.statistics.getCurrent()["MpiReceive"].start();
+
     if ( (kind==modif::dynamicVariables) ||
          (kind==modif::allVariables) ||
          (kind==modif::dataStructure) )
@@ -100,13 +105,15 @@ void HemoCellParticleDataTransfer::receive (
             particleField->addParticle(domain, newParticle.sv);
         }
     }
+    constParticleField->cellFields->hemocell.statistics.getCurrent().stop();
 }
 
 void HemoCellParticleDataTransfer::receive (
         Box3D domain, std::vector<char> const& buffer, modif::ModifT kind, Dot3D absoluteOffset )
 {
   
-  
+  constParticleField->cellFields->hemocell.statistics.getCurrent()["MpiReceive"].start();
+
   if ( (kind==modif::dynamicVariables) ||
        (kind==modif::allVariables) ||
        (kind==modif::dataStructure) )
@@ -125,6 +132,8 @@ void HemoCellParticleDataTransfer::receive (
       particleField->addParticle(domain, newParticle.sv);
     }
   }
+  constParticleField->cellFields->hemocell.statistics.getCurrent().stop();
+
 }
 
 void HemoCellParticleDataTransfer::setBlock(AtomicBlock3D& block) {
@@ -141,6 +150,8 @@ void HemoCellParticleDataTransfer::attribute (
         Box3D toDomain, plint deltaX, plint deltaY, plint deltaZ,
         AtomicBlock3D const& from, modif::ModifT kind )
 {
+  constParticleField->cellFields->hemocell.statistics.getCurrent()["LocalCommunication"].start();
+
     if ( (kind==modif::dynamicVariables) ||
          (kind==modif::allVariables) ||
          (kind==modif::dataStructure) )
@@ -150,16 +161,26 @@ void HemoCellParticleDataTransfer::attribute (
           dynamic_cast<HemoCellParticleField const&>(from);
       vector<const HemoCellParticle *> particles;
       fromParticleField.findParticles(fromDomain, particles);
+      //Calling addParticle on self can invalidate particles pointer array on realloc from vector
+      //Do for every local communication to accomodate overcoupling particle field in the future.
+      vector<HemoCellParticle::serializeValues_t> sv_values;
+      sv_values.reserve(particles.size());
       for (const HemoCellParticle * particle : particles) {
-        particleField->addParticle(toDomain,particle->sv);
+        sv_values.emplace_back(particle->sv);
+      }     
+      for (const HemoCellParticle::serializeValues_t & sv : sv_values) {
+        particleField->addParticle(toDomain, sv);
       }
     }
+  constParticleField->cellFields->hemocell.statistics.getCurrent().stop();
 }
 
 void HemoCellParticleDataTransfer::attribute (
         Box3D toDomain, plint deltaX, plint deltaY, plint deltaZ,
         AtomicBlock3D const& from, modif::ModifT kind, Dot3D absoluteOffset )
 {
+  constParticleField->cellFields->hemocell.statistics.getCurrent()["LocalCommunication"].start();
+  
   if ( (kind==modif::dynamicVariables) ||
        (kind==modif::allVariables) ||
        (kind==modif::dataStructure) )
@@ -173,12 +194,19 @@ void HemoCellParticleDataTransfer::attribute (
     int offset = getOffset(absoluteOffset);
     hemo::Array<T,3> realAbsoluteOffset({(T)absoluteOffset.x, (T)absoluteOffset.y, (T)absoluteOffset.z});
 
-    HemoCellParticle::serializeValues_t sv;
+    //Calling addParticle on self can invalidate particles pointer array on realloc from vector
+    //Do for every local communication to accomodate overcoupling particle field in the future.
+    vector<HemoCellParticle::serializeValues_t> sv_values;
+    sv_values.reserve(particles.size());
     for (const HemoCellParticle * particle : particles) {
-      sv = particle->sv;
-      sv.position += realAbsoluteOffset;
-      sv.cellId += offset;
-      particleField->addParticle(toDomain, sv);
+      sv_values.emplace_back(particle->sv);
+      sv_values.back().position += realAbsoluteOffset;
+      sv_values.back().cellId += offset;
     }     
+    for (const HemoCellParticle::serializeValues_t & sv : sv_values) {
+      particleField->addParticle(toDomain, sv);
+    }
+
   }
+  constParticleField->cellFields->hemocell.statistics.getCurrent().stop();
 }

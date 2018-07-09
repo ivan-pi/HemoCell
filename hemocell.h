@@ -47,6 +47,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #include "voxelizeDomain.h"
 #include "meshGeneratingFunctions.h"
 #include "loadBalancer.h"
+#include "profiler.h"
 
 /* MECHANICS */
 #include "cellMechanics.h"
@@ -217,11 +218,17 @@ public:
   ///The cellfields contains the particle field and all celltypes
   HemoCellFields * cellfields;
   unsigned int iter = 0;
-
+  
+ ///Used to profile a hemocell run
+  Profiler statistics = Profiler("HemoCell");
+  
+  
   XMLreader * documentXML; //Needed for legacy checkpoint reading TODO fix
   private:
   /// Store the last time (iteration) output occured
-  int lastOutputAt;
+  int lastOutputAt = 0;
+  
+ 
 };
 
 #endif // HEMOCELL_H

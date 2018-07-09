@@ -40,7 +40,7 @@ public:
             plint iter_, std::string identifier_,
             T dx_, T dt_, int i);
     /// Arguments: [0] Particle-field. [1] Lattice.
-    ~WriteCellField3DInMultipleHDF5Files(){}; //Fuck C c++
+    ~WriteCellField3DInMultipleHDF5Files(){};
     virtual void processGenericBlocks(Box3D domain, std::vector<AtomicBlock3D*> fields);
     virtual WriteCellField3DInMultipleHDF5Files* clone() const;
     virtual void getTypeOfModification(std::vector<modif::ModifT>& modified) const;

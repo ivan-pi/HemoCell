@@ -63,9 +63,13 @@ void HemoCellStretch::ForceForcedLsps::processGenericBlocks(Box3D domain, std::v
 
   hemo::Array<T,3> ex_force = {external_force,0.,0.};
   for (unsigned int vi : lower_lsps) {
+    if (ppc.find(0) == ppc.end()) { continue; }
+    if (ppc.at(0)[vi] < 0) { continue; }
     (*particles)[ppc.at(0)[vi]].sv.force -= ex_force;
   }
   for (unsigned int vi : upper_lsps) {
+    if (ppc.find(0) == ppc.end()) { continue; }
+    if (ppc.at(0)[vi] < 0) { continue; }
     (*particles)[ppc.at(0)[vi]].sv.force += ex_force;
   }
 }
@@ -92,6 +96,10 @@ unsigned int HemoCellStretch::n_forced_lsps = 0;
 T HemoCellStretch::external_force = 0.0;
 
 void HemoCellStretch::applyForce() {
+  if (cellfield.timescale != 1) {
+    pcout << "Refusing to stretch with particle update timestep larger than 1" << endl;
+    exit(1);
+  }
   vector<MultiBlock3D*> wrapper;
   wrapper.push_back(cellfield.getParticleField3D());
   applyProcessingFunctional(new ForceForcedLsps(),cellfield.getParticleField3D()->getBoundingBox(),wrapper);

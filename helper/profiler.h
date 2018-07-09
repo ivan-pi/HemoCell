@@ -21,5 +21,44 @@ GNU Affero General Public License for more details.
 You should have received a copy of the GNU Affero General Public License
 along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
-#include "hemoCellFunctional.h"
-#include "multiBlock/multiBlockOperations3D.hh"
+
+#ifndef PROFILER_H
+#define PROFILER_H
+
+#include <chrono>
+#include <string>
+#include <map>
+#include <logfile.h>
+
+class Profiler {
+public:
+  Profiler(std::string name_);
+  Profiler(std::string name_, Profiler & parent_);
+
+  void start();
+  void stop();
+  void reset();
+  void printStatistics();
+  void outputStatistics();
+  
+  std::chrono::high_resolution_clock::duration elapsed();
+  std::string elapsed_string();
+  Profiler & operator[] (std::string);
+  Profiler & getCurrent();
+
+
+private:
+  void stop_nowarn();
+  template<typename T>
+  void printStatistics_inner(int level, T & out);
+  std::chrono::high_resolution_clock::duration total_time = std::chrono::high_resolution_clock::duration::zero();
+  std::chrono::high_resolution_clock::time_point start_time = std::chrono::high_resolution_clock::now();
+  bool started = false;
+  const std::string name;
+  std::map<std::string,Profiler> timers;
+  Profiler & parent;
+  Profiler * current = this;
+};
+
+#endif /* PROFILER_H */
+

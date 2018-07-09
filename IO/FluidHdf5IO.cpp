@@ -32,11 +32,11 @@ void outputHDF5(hsize_t* dim, hsize_t* chunk, hid_t& file_id, string& name, floa
     chunk[3] = dim[3];
     //unsigned int nvalues = dim[0]*dim[1]*dim[2]*dim[3];
 
-    int sid = H5Screate_simple(4,dim,NULL);
-      int plist_id = H5Pcreate (H5P_DATASET_CREATE);
+    hid_t sid = H5Screate_simple(4,dim,NULL);
+      hid_t plist_id = H5Pcreate (H5P_DATASET_CREATE);
         H5Pset_chunk(plist_id, 4, chunk); 
         H5Pset_deflate(plist_id, 7);
-        int did = H5Dcreate2(file_id,name.c_str(),H5T_NATIVE_FLOAT,sid,H5P_DEFAULT,plist_id,H5P_DEFAULT);
+        hid_t did = H5Dcreate2(file_id,name.c_str(),H5T_NATIVE_FLOAT,sid,H5P_DEFAULT,plist_id,H5P_DEFAULT);
         H5Dwrite(did,H5T_NATIVE_FLOAT,H5S_ALL,H5S_ALL,H5P_DEFAULT,output);
       H5Dclose(did);
     H5Sclose(sid);
@@ -93,7 +93,7 @@ void WriteFluidField::processGenericBlocks( Box3D domain, vector<AtomicBlock3D*>
     return; //No output needed? ok
   }
 
-  std::string fileName = global::directories().getOutputDir() + "/hdf5/" + zeroPadNumber(iter) + '/'  + createFileName((identifier+".").c_str(),iter,8) + createFileName(".p.", blockid,3) + ".h5";
+  std::string fileName = global::directories().getOutputDir() + "/hdf5/" + to_string(iter) + '/' + identifier + "."  + to_string(iter) + ".p." + to_string(blockid) + ".h5";
   hid_t file_id;
   file_id = H5Fcreate(fileName.c_str(), H5F_ACC_TRUNC, H5P_DEFAULT, H5P_DEFAULT);
 	H5LTset_attribute_double (file_id, "/", "dx", &dx, 1);

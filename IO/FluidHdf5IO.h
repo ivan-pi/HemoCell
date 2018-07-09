@@ -41,7 +41,7 @@ public:
 						MultiBlockLattice3D<T,DESCRIPTOR>& fluid,
             plint iter_, string identifier_,
             T dx_, T dt_);
-    ~WriteFluidField(){}; //Fuck C c++
+    ~WriteFluidField(){}; 
     virtual void processGenericBlocks(Box3D domain, vector<AtomicBlock3D*> fields);
     virtual WriteFluidField* clone() const;
     virtual void getTypeOfModification(vector<modif::ModifT>& modified) const;
