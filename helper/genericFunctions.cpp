@@ -21,7 +21,17 @@ GNU Affero General Public License for more details.
 You should have received a copy of the GNU Affero General Public License
 along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
+
+#include "logfile.h"
+#include "constant_defaults.h"
 #include "genericFunctions.h"
+#include <string.h>
+#include <sstream>
+#include <iomanip>
+
+#include "io/parallelIO.h"
+
+namespace hemo {
 
 void weakScaling(int Nx, int Ny, int Nz, int numberOfProcesses, vector<int> & newNxNyNz) {
     int fmod = int(log2(numberOfProcesses))%3;
@@ -38,7 +48,7 @@ int renameFileToDotOld(std::string fName) {
     if (file_exists(fName)) {
         int renameStatus = rename(fName.c_str(), (fName + ".old").c_str());
         if (renameStatus != 0) {
-            pcout << fName << " error." << std::endl;
+            plb::pcout << fName << " error." << std::endl;
         }
     }
     return renameStatus;
@@ -99,23 +109,14 @@ int mkpath(const char *path, mode_t mode)
     return (status);
 }
 
-std::string zeroPadNumber(int num)
+std::string zeroPadNumber(int num, int w)
 {
     std::ostringstream ss;
-    ss << std::setw( 8 ) << std::setfill( '0' ) << num;
+    ss << std::setw( w ) << std::setfill( '0' ) << num;
     return ss.str();
 }
 
-void checkParameterSanity(T nu_lbm, T u_max_lbm)
-{
-	// Check lattice viscosity [0.01, 0.45]
-    if(nu_lbm < 0.01 || nu_lbm > 0.45)
-        hlog << "(WARNING!!!) lattice viscosity [" << nu_lbm << "] is not in the stable range for LBM [0.01, 0.45]!" << std::endl;
 
-    // Check for lattice velocity to ensure low Courant number (LBM is explicit afterall...)
-    if(u_max_lbm > 0.1)
-        hlog << "(WARNING!!!) lattice velocity [" << u_max_lbm << "] is too high [>0.1]!" << std::endl;
-}
 
 void printHeader()
 {
@@ -125,4 +126,36 @@ void printHeader()
 	hlog << "(_) (_) (____) (_/\\/\\_) (_____)  \\___) (____) (____) (____) " << endl;
 	hlog << "                         v." << VERSION_MAJOR << "." << VERSION_MINOR << endl;
 	hlog << endl;
+}
+
+}
+
+
+#include "palabos3D.h"
+#include "palabos3D.hh"
+
+namespace hemo {
+void boundaryFromFlagMatrix(plb::MultiBlockLattice3D<T,DESCRIPTOR> * fluid, plb::MultiScalarField3D<int> * flagMatrix, bool partOfpreInlet) {
+  plb::Box3D domain2 = flagMatrix->getBoundingBox();
+  for (int x  = domain2.x0-1 ; x <= domain2.x1+1 ; x++) {
+   for (int y  = domain2.y0-1 ; y <= domain2.y1+1 ; y++) {
+    for (int z  = domain2.z0-1 ; z <= domain2.z1+1 ; z++) {
+      if ((x == domain2.x0-1 || y == domain2.y0-1 || z == domain2.z0-1 || x == domain2.x1+1 || y == domain2.y1+1 || z == domain2.z1+1) && !partOfpreInlet ) {
+        defineDynamics(*fluid,x,y,z,new plb::BounceBack<T,DESCRIPTOR>(1.));
+      }
+    }
+   }
+  }
+  
+  for (int x  = domain2.x0 ; x <= domain2.x1 ; x++) {
+   for (int y  = domain2.y0 ; y <= domain2.y1 ; y++) {
+    for (int z  = domain2.z0 ; z <= domain2.z1 ; z++) {
+      if (flagMatrix->get(x,y,z) == 0 && !partOfpreInlet) {
+        defineDynamics(*fluid,x,y,z,new plb::BounceBack<T,DESCRIPTOR>(1.));
+      }
+    }
+   }
+  }
+}
+
 }

@@ -24,10 +24,9 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #ifndef IMMERSEDBOUNDARYMETHOD_H
 #define IMMERSEDBOUNDARYMETHOD_H
 
-#include "hemocell_internal.h"
 #include <vector>
 
-namespace plb {
+namespace hemo {
 
 /// Decide if a Lagrangian point is contained in 3D box, boundaries exclusive
 inline bool contained_sane(hemo::Array<plint,3> const& x, Box3D const& box) {
@@ -61,11 +60,16 @@ void interpolationCoefficientsPhi1 (
         std::vector<Dot3D>& cellPos, std::vector<T>& weights);
 
 inline void interpolationCoefficientsPhi2 (
-        BlockLattice3D<T,DESCRIPTOR> & block, HemoCellParticle * particle)
+        BlockLattice3D<T,DESCRIPTOR> & block, HemoCellParticle & particle)
 {
     //Clean current
-    particle->kernelWeights.clear();
-    particle->kernelLocations.clear();
+    particle.kernelWeights.clear();
+    particle.kernelWeights.reserve(8);
+    particle.kernelLocations.clear();
+    #ifdef INTERIOR_VISCOSITY
+    particle.kernelCoordinates.clear();
+    particle.kernelCoordinates.reserve(8);
+    #endif
     
     // Fixed kernel size
     const plint x0=-1, x1=2; //const for nice loop unrolling
@@ -75,7 +79,7 @@ inline void interpolationCoefficientsPhi2 (
     const hemo::Array<plint,3> relLoc = {tmpDot.x, tmpDot.y, tmpDot.z};
 
     //Get position, relative
-    const hemo::Array<T,3> position_tmp = particle->sv.position;
+    const hemo::Array<T,3> position_tmp = particle.sv.position;
     const hemo::Array<T,3> position = {position_tmp[0] -relLoc[0], position_tmp[1]-relLoc[1],position_tmp[2]-relLoc[2]};
 
     //Get our reference node (0,0)
@@ -86,9 +90,11 @@ inline void interpolationCoefficientsPhi2 (
     
     //Prealloc is better than JItalloc
     hemo::Array<plint,3> posInBlock;
+
     T phi[3];
     T weight;
     T total_weight = 0;
+    
     
     for (int dx = x0; dx < x1; ++dx) {
         for (int dy = x0; dy < x1; ++dy) {
@@ -108,19 +114,25 @@ inline void interpolationCoefficientsPhi2 (
                 if (weight  == 0.0){
                   continue;
                 }
+
                 if (block.get(posInBlock[0],posInBlock[1],posInBlock[2]).getDynamics().isBoundary()) {
                   continue;
                 }              
                 
                 total_weight+=weight;
 
-                particle->kernelWeights.push_back(weight);
-                particle->kernelLocations.push_back(&block.get(posInBlock[0],posInBlock[1],posInBlock[2]));
+                particle.kernelWeights.push_back(weight);
+                particle.kernelLocations.push_back(&block.get(posInBlock[0],posInBlock[1],posInBlock[2]));
+		
+                #ifdef INTERIOR_VISCOSITY
+                // Or create a clone of the method?
+                particle.kernelCoordinates.push_back({posInBlock[0],posInBlock[1],posInBlock[2]});
+                #endif
             }
         }
     }
     const T weight_coeff = 1.0 / total_weight;
-    for(T & weight_ : particle->kernelWeights) { //Normalize weight to 1
+    for(T & weight_ : particle.kernelWeights) { //Normalize weight to 1
       weight_ *= weight_coeff;
     }
 }

@@ -24,7 +24,6 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #ifndef FCN_GENERIC_FUNCTIONS_H
 #define FCN_GENERIC_FUNCTIONS_H
 
-#include "hemocell_internal.h"
 #include <sys/stat.h>
 #include <vector>
 #include <string>
@@ -34,6 +33,9 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #ifdef HAVE_UNISTD_H
 #include <unistd.h>
 #endif /* HAVE_UNISTD_H */
+
+namespace hemo {
+  
 typedef struct stat Stat;
 
 
@@ -81,9 +83,21 @@ int do_mkdir(const char *path, mode_t mode);
 // mkpath(argv[i], 0777);
 int mkpath(const char *path, mode_t mode);
 
-std::string zeroPadNumber(int num);
+std::string zeroPadNumber(int num,int w = 12);
 
-void checkParameterSanity(double,double);
 void printHeader();
 
+}
+#include "multiBlock/multiBlockLattice3D.h"
+#include "multiBlock/multiDataField3D.h"
+#include "constant_defaults.h"
+namespace hemo {
+void boundaryFromFlagMatrix(plb::MultiBlockLattice3D<T,DESCRIPTOR> * fluid, plb::MultiScalarField3D<int> * flagMatrix, bool); 
+inline std::ostream& operator<<(std::ostream& stream, const plb::Box3D& box) {
+    return stream << "Box3D: " << box.x0 << " "<<box.x1<<" "<<box.y0<<" "<<box.y1<< " "<<box.z0<<" "<<box.z1<<endl;
+}
+inline std::ostream& operator<<(std::ostream& stream, const plb::Dot3D& dot) {
+    return stream << "Dot3D: " << dot.x << " "<<dot.y<<" "<<dot.z<<endl;
+}
+}
 #endif // FCN_GENERIC_FUNCTIONS_HH

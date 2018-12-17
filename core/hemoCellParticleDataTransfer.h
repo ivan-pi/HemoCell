@@ -24,14 +24,29 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #ifndef HEMOCELL_PARTICLE_DATA_TRANSFER_H
 #define HEMOCELL_PARTICLE_DATA_TRANSFER_H
 
-#include "hemocell_internal.h"
-class HemoCellParticleField;
+namespace hemo {
+  class HemoCellParticleDataTransfer;
+}
+
+#include "atomicBlock/atomicBlock3D.h"
+#include "hemoCellParticleField.h"
+#include "constant_defaults.h"
+
+namespace hemo {
+using namespace plb;
 
 class HemoCellParticleDataTransfer : public BlockDataTransfer3D {
 public:
     HemoCellParticleDataTransfer();
     virtual plint staticCellSize() const;
     virtual void send(Box3D domain, std::vector<char>& buffer, modif::ModifT kind) const;
+    //Much faster since we can circumvent memcpy (twice!)
+    void receive(Box3D const & domain, char *, unsigned int size, modif::ModifT);
+    void receive(Box3D const & domain, char *, unsigned int size, modif::ModifT, Dot3D absoluteOffset);
+    void receive(char *, unsigned int size, modif::ModifT);
+    void receive(char *, unsigned int size, modif::ModifT, Dot3D absoluteOffset);
+    virtual void receive(Box3D domain, std::vector<NoInitChar> const& buffer);
+    virtual void receive(Box3D domain, std::vector<NoInitChar> const& buffer, Dot3D absoluteOffset);
     virtual void receive(Box3D domain, std::vector<char> const& buffer, modif::ModifT kind);
     virtual void receive(Box3D domain, std::vector<char> const& buffer, modif::ModifT kind, Dot3D absoluteOffset);
     virtual void receive( Box3D domain, std::vector<char> const& buffer,
@@ -48,10 +63,10 @@ public:
                            AtomicBlock3D const& from, modif::ModifT kind);
     virtual void attribute(Box3D toDomain, plint deltaX, plint deltaY, plint deltaZ,
                            AtomicBlock3D const& from, modif::ModifT kind, Dot3D absoluteOffset);
-    inline plint getOffset(Dot3D &);
+    plint getOffset(Dot3D const&);
 private:
     HemoCellParticleField* particleField;
     HemoCellParticleField const * constParticleField;
 };
-
+}
 #endif

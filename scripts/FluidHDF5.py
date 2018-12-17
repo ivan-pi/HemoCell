@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import h5py as h5
 import os
+import sys
 from glob import glob
 
 class XMLIndentation(object):
@@ -108,7 +109,8 @@ class createXDMF(object):
     processorStrings = sorted(processorStrings)
     self.fnameString = fnameString
     if os.path.isfile(fnameToSave):
-      print("%s (existed)" % (fnameToSave))
+      print("%s (existed), skipping ..." % (fnameToSave))
+      return
     self.xdmf_file = open(fnameToSave, "w")
     self.xmlInt = XMLIndentation()
     self.output = ""
@@ -139,6 +141,9 @@ if __name__ == '__main__':
     
     directories = sorted(os.listdir(dirname))
     identifier = 'Fluid'
+
+    if len(sys.argv) > 1:
+      identifier = sys.argv[-1]
     
     for iterDir in directories:
         fluidH5files = sorted( glob(dirname + '/' + iterDir + '/' + identifier + '*p*.h5') )

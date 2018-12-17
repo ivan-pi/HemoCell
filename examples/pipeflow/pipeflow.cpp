@@ -1,32 +1,10 @@
-/*
-This file is part of the HemoCell library
-
-HemoCell is developed and maintained by the Computational Science Lab 
-in the University of Amsterdam. Any questions or remarks regarding this library 
-can be sent to: info@hemocell.eu
-
-When using the HemoCell library in scientific work please cite the
-corresponding paper: https://doi.org/10.3389/fphys.2017.00563
-
-The HemoCell library is free software: you can redistribute it and/or
-modify it under the terms of the GNU Affero General Public License as
-published by the Free Software Foundation, either version 3 of the
-License, or (at your option) any later version.
-
-The library is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-GNU Affero General Public License for more details.
-
-You should have received a copy of the GNU Affero General Public License
-along with this program.  If not, see <http://www.gnu.org/licenses/>.
-*/
 #include "hemocell.h"
 #include "rbcHighOrderModel.h"
 #include "pltSimpleModel.h"
 #include "cellInfo.h"
 #include "fluidInfo.h"
 #include "particleInfo.h"
+#include "writeCellInfoCSV.h"
 #include <fenv.h>
 
 int main(int argc, char *argv[]) {
@@ -40,8 +18,8 @@ int main(int argc, char *argv[]) {
 
   hlogfile << "(PipeFlow) (Geometry) reading and voxelizing STL file " << (*cfg)["domain"]["geometry"].read<string>() << endl; 
 
-  MultiScalarField3D<int> *flagMatrix = 0; 
-  VoxelizedDomain3D<T> * voxelizedDomain = 0; 
+  std::auto_ptr<MultiScalarField3D<int>> flagMatrix;
+  std::auto_ptr<VoxelizedDomain3D<T>> voxelizedDomain; 
   getFlagMatrixFromSTL((*cfg)["domain"]["geometry"].read<string>(),  
                        (*cfg)["domain"]["fluidEnvelope"].read<int>(),  
                        (*cfg)["domain"]["refDirN"].read<int>(),  
@@ -50,17 +28,17 @@ int main(int argc, char *argv[]) {
                        (*cfg)["domain"]["blockSize"].read<int>(),
                        (*cfg)["domain"]["particleEnvelope"].read<int>()); 
 
-  param::lbm_pipe_parameters((*cfg),flagMatrix);
+  param::lbm_pipe_parameters((*cfg),flagMatrix.get());
   param::printParameters();
   
   hemocell.lattice = new MultiBlockLattice3D<T, DESCRIPTOR>(
-            voxelizedDomain->getMultiBlockManagement(),
+            voxelizedDomain.get()->getMultiBlockManagement(),
             defaultMultiBlockPolicy3D().getBlockCommunicator(),
             defaultMultiBlockPolicy3D().getCombinedStatistics(),
             defaultMultiBlockPolicy3D().getMultiCellAccess<T, DESCRIPTOR>(),
             new GuoExternalForceBGKdynamics<T, DESCRIPTOR>(1.0/param::tau));
 
-  defineDynamics(*hemocell.lattice, *flagMatrix, (*hemocell.lattice).getBoundingBox(), new BounceBack<T, DESCRIPTOR>(1.), 0);
+  defineDynamics(*hemocell.lattice, *flagMatrix.get(), (*hemocell.lattice).getBoundingBox(), new BounceBack<T, DESCRIPTOR>(1.), 0);
 
   hemocell.lattice->toggleInternalStatistics(false);
   hemocell.lattice->periodicity().toggleAll(false);
@@ -123,6 +101,7 @@ int main(int argc, char *argv[]) {
   unsigned int tmax = (*cfg)["sim"]["tmax"].read<unsigned int>();
   unsigned int tmeas = (*cfg)["sim"]["tmeas"].read<unsigned int>();
   unsigned int tcheckpoint = (*cfg)["sim"]["tcheckpoint"].read<unsigned int>();
+  unsigned int tcsv = (*cfg)["sim"]["tcsv"].read<unsigned int>();
 
   hlog << "(PipeFlow) Starting simulation..." << endl;
 
@@ -133,16 +112,7 @@ int main(int argc, char *argv[]) {
     setExternalVector(*hemocell.lattice, hemocell.lattice->getBoundingBox(),
                 DESCRIPTOR<T>::ExternalField::forceBeginsAt,
                 plb::Array<T, DESCRIPTOR<T>::d>(poiseuilleForce, 0.0, 0.0));
-    
-    // Only enable if PARMETIS build is available
-    /*
-     if (hemocell.iter % tbalance == 0) {
-       if(hemocell.calculateFractionalLoadImbalance() > (*cfg)["parameters"]["maxFlin"].read<T>()) {
-         hemocell.doLoadBalance();
-         hemocell.doRestructure();
-       }
-     }
-   */
+
     if (hemocell.iter % tmeas == 0) {
         hlog << "(main) Stats. @ " <<  hemocell.iter << " (" << hemocell.iter * param::dt << " s):" << endl;
         hlog << "\t # of cells: " << CellInformationFunctionals::getTotalNumberOfCells(&hemocell);
@@ -164,6 +134,12 @@ int main(int argc, char *argv[]) {
         // pcout << "Particle velocity, Minimum: " << pinfo.min << " Maximum: " << pinfo.max << " Average: " << pinfo.avg << endl;
         hemocell.writeOutput();
     }
+    
+    if (hemocell.iter % tcsv == 0) {
+      hlog << "Saving simple mean cell values to CSV at timestep " << hemocell.iter << endl;
+      writeCellInfo_CSV(hemocell);
+    }
+    
     if (hemocell.iter % tcheckpoint == 0) {
       hemocell.saveCheckPoint();
     }

@@ -26,26 +26,12 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 //Load Constants
 #include "constant_defaults.h"
-#include "hemocell_internal.h"
 #include "config.h"
 
 /* CORE libs */
-#include "hemoCellFunctional.h"
-#include "hemoCellParticle.h"
 #include "hemoCellFields.h"
-#include "hemoCellField.h"
 
 /* IO */
-#include "ParticleHdf5IO.h"
-#include "FluidHdf5IO.h"
-#include "writeCellInfoCSV.h"
-#include "readPositionsBloodCells.h"
-
-/* HELPERS */
-#include "genericFunctions.h"
-#include "meshMetrics.h"
-#include "voxelizeDomain.h"
-#include "meshGeneratingFunctions.h"
 #include "loadBalancer.h"
 #include "profiler.h"
 
@@ -53,8 +39,21 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #include "cellMechanics.h"
 #include "constantConversion.h"
 
-/* EXTERNALS */
-//#include "diagonalize.hpp"  // TODO: Do we need this file?
+/* Helpers */
+#include "preInlet.h"
+
+/* Always used palabos functions in case files*/
+#ifndef COMPILING_HEMOCELL_LIBRARY
+#include "voxelizeDomain.h"
+#include "palabos3D.h"
+#include "palabos3D.hh"
+using namespace hemo;
+using namespace plb;
+#endif
+
+
+
+namespace hemo { 
 
 /*!
  * The HemoCell class contains all the information, data and methods to set up a
@@ -79,6 +78,11 @@ class HemoCell {
    */
   HemoCell(char * configFileName, int argc, char* argv[]);
 
+  /*
+   * Clean up hemocell
+   */
+  ~HemoCell();
+  
   /**
    *  Set all the fluid nodes to these values
    * 
@@ -104,34 +108,8 @@ class HemoCell {
   */
   template<class Mechanics>
   void addCellType(string name, int constructType) {
-    string materialXML = name + ".xml";
-    Config *materialCfg = new Config(materialXML.c_str());
-    TriangularSurfaceMesh<T> * meshElement;
-    
-    T aspectRatio = 0.3;
-    if (constructType == ELLIPSOID_FROM_SPHERE) {
-      aspectRatio = (*materialCfg)["MaterialModel"]["aspectRatio"].read<T>();
-    }
-    
-    if(constructType == STRING_FROM_VERTEXES) {
-      meshElement = constructStringMeshFromConfig(*materialCfg);     
-    } else {
-      TriangleBoundary3D<T> * boundaryElement = NULL;
-      try {
-        boundaryElement = new TriangleBoundary3D<T>(constructMeshElement(constructType, 
-                           (*materialCfg)["MaterialModel"]["radius"].read<T>()/param::dx, 
-                           0, param::dx, 
-                           (*materialCfg)["MaterialModel"]["StlFile"].read<string>(), plb::Array<T,3>(0.,0.,0.), aspectRatio));
-      } catch (std::invalid_argument & exeption) {
-        boundaryElement = new TriangleBoundary3D<T>(constructMeshElement(constructType, 
-                           (*materialCfg)["MaterialModel"]["radius"].read<T>()/param::dx, 
-                           (*materialCfg)["MaterialModel"]["minNumTriangles"].read<T>(), param::dx, 
-                           string(""), plb::Array<T,3>(0.,0.,0.), aspectRatio));
-      }
-      meshElement = new TriangularSurfaceMesh<T>(boundaryElement->getMesh());
-    }
-    HemoCellField * cellfield = cellfields->addCellType(*meshElement, name);
-    Mechanics * mechanics = new Mechanics((*materialCfg), *cellfield);
+    HemoCellField * cellfield = cellfields->addCellType(name,constructType);
+    Mechanics * mechanics = new Mechanics(*cellfield->materialCfg, *cellfield);
     cellfield->mechanics = mechanics;
     cellfield->statistics();
   }
@@ -154,12 +132,23 @@ class HemoCell {
   //Set the timescale separation of the particles of a particle type
   void setMaterialTimeScaleSeparation(string name, unsigned int separation);
   
+  //Enable solidify mechanics of a celltype
+  void enableSolidifyMechanics(string name) {
+    hlog << "(HemoCell) Enabling Solidify Mechanics for " << name << " mechanical model" << endl;
+    (*cellfields)[name]->doSolidifyMechanics = true;
+  }
+  
   //Set the separation of when velocity is interpolated to the particle
   void setParticleVelocityUpdateTimeScaleSeparation(unsigned int separation);
 
   //Set the timescale separation of the repulsion force for all particles
   void setRepulsionTimeScaleSeperation(unsigned int separation);
 
+  void setSolidifyTimeScaleSeperation(unsigned int separation);
+
+  //Set the timescale separation of the interior viscosity, in between update and raytracing (expensive) update
+  void setInteriorViscosityTimeScaleSeperation(unsigned int separation, unsigned int separation_entire_grid);
+  
   //Enable Boundary particles and set the boundary particle constants
   void enableBoundaryParticles(T boundaryRepulsionConstant, T boundaryRepulsionCutoff, unsigned int timestep = 1);
   
@@ -168,6 +157,9 @@ class HemoCell {
   
   //Set the output of the fluid field
   void setFluidOutputs(vector<int> outputs);
+  
+  //Set the output of the CEPAC field
+  void setCEPACOutputs(vector<int> outputs);
   
   //Explicitly set the periodicity of the domain along the different axes
   void setSystemPeriodicity(unsigned int axis, bool bePeriodic);
@@ -211,24 +203,36 @@ public:
   ///Restructure the grid, has an optional argument to specify whether a checkpoint from this iteration is available, default is YES!
   void doRestructure(bool checkpoint_avail = true);
   
-  LoadBalancer * loadBalancer;
+  ///Initialize the fluid field with the given management, should be done after specifing the pre inlets and before initializing the cellfields
+  void initializeLattice(MultiBlockManagement3D const & management);
+ 
+  PreInlet * preInlet = 0;
+  
+  bool partOfpreInlet = false;
+  
+  map<plint,plint> BlockToMpi;
+  
+  LoadBalancer * loadBalancer = 0;
   ///The fluid lattice
   MultiBlockLattice3D<T, DESCRIPTOR> * lattice = 0;
-	Config * cfg;
+  
+  MultiBlockManagement3D * preinlet_management = 0, * lattice_management = 0;
+  
+  Config * cfg = 0;
   ///The cellfields contains the particle field and all celltypes
-  HemoCellFields * cellfields;
+  HemoCellFields * cellfields = 0;
   unsigned int iter = 0;
   
- ///Used to profile a hemocell run
-  Profiler statistics = Profiler("HemoCell");
-  
-  
-  XMLreader * documentXML; //Needed for legacy checkpoint reading TODO fix
+  XMLreader * documentXML = 0; //Needed for legacy checkpoint reading TODO fix
   private:
   /// Store the last time (iteration) output occured
-  int lastOutputAt = 0;
+  unsigned int lastOutputAt = 0;
+  std::chrono::high_resolution_clock::duration lastOutput = std::chrono::high_resolution_clock::duration::zero();
   
- 
+  /// To be run right before the first iteration, all checking should move here
+  void sanityCheck();
+  /// Checked in iteration, do sanity check when not yet done
+  bool sanityCheckDone = false;
 };
-
+}
 #endif // HEMOCELL_H

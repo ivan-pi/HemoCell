@@ -25,11 +25,16 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #define SURFACE_PARTICLE_3D_H
 
 class HemoCellParticle;
-#include "hemocell_internal.h"
+#include "helper/array.h"
+#include "core/cell.hh"
+
+#include <cstdint> 
 
 #ifndef PARTICLE_ID
 #define PARTICLE_ID 0
 #endif
+
+namespace hemo {
 
 class HemoCellParticle {
 public:
@@ -45,20 +50,28 @@ public:
     hemo::Array<T,3> vPrevious;
 #endif
     plint cellId;
-    plint vertexId;
-    pluint celltype;
+    
+    uint16_t vertexId;
+    
+    unsigned char celltype;
 
-    bool fromPreInlet;
-
+#ifdef SOLIDIFY_MECHANICS
+    bool solidify;
+#endif
   };
   
   serializeValues_t sv;
 
   hemo::Array<T,3> force_total;
   plint tag;
+  #ifdef INTERIOR_VISCOSITY
+  hemo::Array<T,3> normalDirection;
   //Is vector, optimize with hemo::Array possible
-  vector<Cell<T,DESCRIPTOR>*> kernelLocations;
-  vector<T>         kernelWeights;
+  std::vector<hemo::Array<plint, 3>> kernelCoordinates;
+  #endif
+
+  std::vector<plb::Cell<T,DESCRIPTOR>*> kernelLocations;
+  std::vector<T>         kernelWeights;
 
   hemo::Array<T,3> *force_volume = &sv.force;
   hemo::Array<T,3> *force_bending = &sv.force;
@@ -76,6 +89,10 @@ public:
     tag = copy.tag;
     kernelLocations = copy.kernelLocations;
     kernelWeights = copy.kernelWeights;
+    #ifdef INTERIOR_VISCOSITY
+    normalDirection = copy.normalDirection;
+    kernelCoordinates = copy.kernelCoordinates;
+    #endif
     
     if (!(&copy.sv.force == copy.force_volume)) {
       force_volume = copy.force_volume;
@@ -86,11 +103,6 @@ public:
       force_inner_link = copy.force_inner_link;
     }
   }
-  HemoCellParticle() {
-    sv = {};
-    force_total = {0.,0.,0.};
-    tag = -1;
-  }
   
   HemoCellParticle (hemo::Array<T,3> position_, plint cellId_, plint vertexId_,pluint celltype_) {
     sv.v = {0.,0.,0.};
@@ -100,9 +112,19 @@ public:
     sv.cellId = cellId_;
     sv.vertexId = vertexId_;
     sv.celltype=celltype_;
-    sv.fromPreInlet = false;
+#ifdef SOLIDIFY_MECHANICS
+    sv.solidify = false;
+#endif
     force_total = {0.,0.,0.};
+#ifdef INTERIOR_VISCOSITY
+    normalDirection = {0.,0.,0.};
+#endif
     tag = -1;
+    
+    if (vertexId_ > UINT16_MAX) {
+      std::cerr << "(HemoCellParticle) Trying to add more vertexes to a single cell than UINT16_MAX, consider converting vertexid to a long int" << std::endl;
+      exit(1);
+    }
   }
   
   HemoCellParticle (const serializeValues_t & sv_) {
@@ -115,6 +137,10 @@ public:
     sv = copy.sv;
     kernelLocations = copy.kernelLocations;
     kernelWeights = copy.kernelWeights;
+    #ifdef INTERIOR_VISCOSITY
+    normalDirection = copy.normalDirection;
+    kernelCoordinates = copy.kernelCoordinates;
+    #endif
     
     if (&copy.sv.force == copy.force_volume) {
       force_volume = &sv.force;
@@ -171,34 +197,13 @@ public:
         #endif
         //v = {0.0,0.0,0.0};
     }
-    void serialize(HierarchicSerializer& serializer) const 
-    {
-        serializer.addValue<serializeValues_t>(sv);
-    }
-    void unserialize(HierarchicUnserializer& unserializer) 
-    {
-        unserializer.readValue<serializeValues_t>(sv);
-        //These pointers are only changed for nice outputs
-        force_volume = &sv.force; 
-        force_area = &sv.force; 
-        force_link = &sv.force;
-        force_bending = &sv.force;
-        force_visc = &sv.force;
-        force_inner_link = &sv.force;
-        
-    }
-
+    
     inline int getId() const {return PARTICLE_ID;}
     inline plint getTag() { return tag; } //TODO remove for direct access
     inline void setTag(plint tag_) { tag = tag_; }
 
 };
 
-//TODO better way to override this function
-inline void serialize(HemoCellParticle& particle, vector<char>& data) {
-  HierarchicSerializer serializer(data,PARTICLE_ID);
-  particle.serialize(serializer);
 }
-
 #endif  // SURFACE_PARTICLE_3D_H
 

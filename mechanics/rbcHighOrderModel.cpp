@@ -22,9 +22,10 @@ You should have received a copy of the GNU Affero General Public License
 along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 #include "rbcHighOrderModel.h"
+#include "logfile.h"
 //TODO Make all inner hemo::Array variables constant as well
 
-
+namespace hemo {
 RbcHighOrderModel::RbcHighOrderModel(Config & modelCfg_, HemoCellField & cellField_) : CellMechanics(cellField_, modelCfg_),
                   cellField(cellField_),
                   k_volume( RbcHighOrderModel::calculate_kVolume(modelCfg_,*cellField_.meshmetric) ),
@@ -111,6 +112,14 @@ void RbcHighOrderModel::ParticleMechanics(map<int,vector<HemoCellParticle *>> & 
       *cell[triangle[1]]->force_volume += local_volume_force;
       *cell[triangle[2]]->force_volume += local_volume_force;
 
+#ifdef INTERIOR_VISCOSITY
+      // Add the normal direction here, always pointing outward
+      const hemo::Array<T, 3> local_normal_dir = (triangle_normals[triangle_n])*(triangle_areas[triangle_n]/cellConstants.area_mean_eq);
+      cell[triangle[0]]->normalDirection += local_normal_dir;
+      cell[triangle[1]]->normalDirection += local_normal_dir;
+      cell[triangle[2]]->normalDirection += local_normal_dir;
+#endif
+
       triangle_n++;
     }
 
@@ -142,11 +151,7 @@ void RbcHighOrderModel::ParticleMechanics(map<int,vector<HemoCellParticle *>> & 
               
       const T ndev = dot(patch_normal, dev_vect); // distance along patch normal
 
-#ifdef PRECALCULATED_ANGLES
       const T dDev = (ndev - cellConstants.surface_patch_center_dist_eq_list[i] ) / cellConstants.edge_mean_eq; // Non-dimensional
-#else 
-      const T dDev = ndev / cellConstants.edge_mean_eq; // Non-dimensional
-#endif
 
       //TODO scale bending force
       const hemo::Array<T,3> bending_force = k_bend * ( dDev + dDev/std::fabs(0.055-dDev*dDev)) * patch_normal; // tau_b comes from the angle limit w. eq.lat.tri. assumptiln
@@ -212,8 +217,4 @@ void RbcHighOrderModel::statistics() {
     hlog << "\t N faces:  " << cellConstants.triangle_list.size() << std::endl;
 };
 
-
-
-
-
-
+}

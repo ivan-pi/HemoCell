@@ -24,7 +24,12 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #include "readPositionsBloodCells.h"
 #include "tools/packCells/geometry.h"
 #include <sstream>
+#include "logfile.h"
+#include "hemocell.h"
+#include "preInlet.h"
 
+namespace hemo {
+  
 inline void meshRotation (TriangularSurfaceMesh<T> * mesh, hemo::Array<T,3> rotationAngles) {
     plb::Array<T,2> xRange, yRange, zRange;
     mesh->computeBoundingBox (xRange, yRange, zRange);
@@ -40,7 +45,7 @@ inline void positionCellInParticleField(HEMOCELL_PARTICLE_FIELD& particleField, 
     Box3D fluidbb = fluid.getBoundingBox();
     Dot3D rrelfluidloc; // used later;
     int denyLayerSize; // used later;
-    HemoCellParticle to_add_particle; // used_later
+    HemoCellParticle::serializeValues_t to_add_particle; // used_later
 
     for (plint iVertex=0; iVertex < nVertices; ++iVertex) {
         hemo::Array<T,3> vertex = startingPoint + mesh->getVertex(iVertex);
@@ -80,8 +85,8 @@ inline void positionCellInParticleField(HEMOCELL_PARTICLE_FIELD& particleField, 
         }  
       }
       
-      to_add_particle = HemoCellParticle(vertex,cellId,iVertex,celltype);
-      particleField.addParticle(particleField.getBoundingBox(), &to_add_particle);
+      to_add_particle = HemoCellParticle(vertex,cellId,iVertex,celltype).sv;
+      particleField.addParticle(to_add_particle);
 no_add:;
     }
 }
@@ -122,6 +127,7 @@ void getReadPositionsBloodCellsVector(Box3D realDomain,
     int cellid = 0;
     // TODO: proper try-catch
     for(pluint j = 0; j < Np.size(); j++) {
+
         // Reading data from file
         fstream fIn;
         fIn.open(cellFields[j]->name + ".pos", fstream::in);
@@ -145,6 +151,14 @@ void getReadPositionsBloodCellsVector(Box3D realDomain,
             packAngles[j][i-less] *= -1.0;  // Right- to left-handed coordinate system
             cellIdss[j][i-less] = cellid;
 
+            if (cellFields.hemocell.preInlet && cellFields.hemocell.preInlet->initialized) {
+              //Translate system to preInlet Location (set 0,0,0 point)
+              packPositions[j][i-less][0] += cellFields.hemocell.preInlet->location.x0/dx;
+              packPositions[j][i-less][1] += cellFields.hemocell.preInlet->location.y0/dx;
+              packPositions[j][i-less][2] += cellFields.hemocell.preInlet->location.z0/dx;
+            }
+            
+            
             //Check if it actually fits (mostly) in this atomic block
             if (packPositions[j][i-less][0]*dx < realDomain.x0 - cfg["domain"]["particleEnvelope"].read<int>() ||
                 packPositions[j][i-less][0]*dx > realDomain.x1 + cfg["domain"]["particleEnvelope"].read<int>() ||
@@ -198,7 +212,7 @@ void getReadPositionsBloodCellsVector(Box3D realDomain,
 /* ******** ReadPositionMultipleCellField3D *********************************** */
 void ReadPositionsBloodCellField3D::processGenericBlocks (
         Box3D domain, std::vector<AtomicBlock3D*> blocks )
-{
+{  
     int numberOfCellFields = blocks.size() -1;
     //T ratio;
     BlockLattice3D<T,DESCRIPTOR>& fluid =
@@ -259,16 +273,11 @@ void ReadPositionsBloodCellField3D::processGenericBlocks (
 			delete meshCopy;
         }
 
-        
-        //SYNC THEM ENVELOPES
-        //cellFields.syncEnvelopes();
-        // DELETE CELLS THAT ARE NOT WHOLE
-        plint nVertices=meshes[iCF]->getNumVertices();
         particleFields[iCF]->deleteIncompleteCells(iCF,false);
         std::vector<HemoCellParticle*> particles;
         particleFields[iCF]->findParticles(particleFields[iCF]->getBoundingBox(), particles, iCF);
         
-//delete meshes[iCF];
+        delete meshes[iCF];
     }
     //cout << "Atomic Block ID: " << particleFields[0]->atomicBlockId;
     //cout    << " Total complete cells (with periodicity): " << particleFields[0]->get_lpc().size() << std::endl;
@@ -313,8 +322,13 @@ void readPositionsBloodCellField3D(HemoCellFields & cellFields, T dx, Config & c
     }
     hlog << "(readPositionsBloodCels) Reading particle positions..." << std::endl;
     
+    if (cellFields.hemocell.preInlet && cellFields.hemocell.preInlet->initialized && !cellFields.hemocell.partOfpreInlet) { } else {
     applyProcessingFunctional(
             new ReadPositionsBloodCellField3D(cellFields, dx, cfg),
             cellFields.lattice->getBoundingBox(), fluidAndParticleFieldsArg);
     hlogfile << "Mpi Process: " << global::mpi().getRank()  << " Completed loading particles" << std::endl;
+    }
+    cellFields.number_of_cells = getTotalNumberOfCells(cellFields);
+}
+
 }

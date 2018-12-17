@@ -22,11 +22,13 @@ You should have received a copy of the GNU Affero General Public License
 along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 #include "ParticleHdf5IO.h"
+#include "hemocell.h"
 
 #include <hdf5.h>
 #include <hdf5_hl.h>
 #include <vector>
 
+namespace hemo {
 /* ******** WriteCellField3DInMultipleHDF5Files *********************************** */
 WriteCellField3DInMultipleHDF5Files::WriteCellField3DInMultipleHDF5Files (
         HemoCellField & cellField3D_,
@@ -48,10 +50,14 @@ void WriteCellField3DInMultipleHDF5Files::processGenericBlocks (
       if (cellField3D.desiredOutputVariables.size() == 0) {
           return; //No output desired, no problem
       }
+      
+    if (cellField3D.cellFields.hemocell.partOfpreInlet) {
+      identifier += "_PRE";
+    }
     /************************************************************/
     /**            Initialise HDF5 file                        **/
    /************************************************************/
-     std::string fileName = global::directories().getOutputDir() + "/hdf5/" + to_string(iter) + '/' + identifier + "."  + to_string(iter) + ".p." + to_string(particleField.atomicBlockId) + ".h5";
+     std::string fileName = global::directories().getOutputDir() + "/hdf5/" + zeroPadNumber(iter) + '/' + identifier + "."  + zeroPadNumber(iter) + ".p." + to_string(particleField.atomicBlockId) + ".h5";
      hid_t file_id;
      file_id = H5Fcreate(fileName.c_str(), H5F_ACC_TRUNC, H5P_DEFAULT, H5P_DEFAULT);
 
@@ -65,12 +71,12 @@ void WriteCellField3DInMultipleHDF5Files::processGenericBlocks (
      hsize_t dimVertices[2];
      hsize_t chunk[2];  
  
-     vector<vector<T>> positions;
+     //vector<vector<T>> positions;
      
     /************************************************************/
     /**            Write output to HDF5 file                   **/
    /************************************************************/
-         
+    
     for (pluint i = 0; i < cellField3D.desiredOutputVariables.size(); i++) {
         vector<vector<T>> * output = new vector<vector<T>>();
         std::string vectorname = "";
@@ -101,13 +107,12 @@ void WriteCellField3DInMultipleHDF5Files::processGenericBlocks (
         H5Dclose(did);
         H5Sclose(sid);
             
-        if (i == 0) {
+        if (cellField3D.desiredOutputVariables[i] == OUTPUT_POSITION) {
+            //positions = (*output);
             long int nP = (*output).size();
             H5LTset_attribute_long (file_id, "/", "numberOfParticles", &nP, 1);
         }
-        if (cellField3D.desiredOutputVariables[i] == OUTPUT_POSITION) {
-            positions = (*output);
-        }
+
         delete output;
         delete[] output_formatted;
     }
@@ -210,6 +215,8 @@ BlockDomain::DomainT WriteCellField3DInMultipleHDF5Files::appliesTo () const {
 
 void writeCellField3D_HDF5(HemoCellFields& cellFields, T dx, T dt, plint iter, std::string preString)
 {
+    global.statistics.getCurrent()["writeCellField"].start();
+
     for (pluint i = 0; i < cellFields.size(); i++) {
 	std::string identifier = preString + cellFields[i]->getIdentifier();
         WriteCellField3DInMultipleHDF5Files * bprf = new WriteCellField3DInMultipleHDF5Files(*cellFields[i], iter, identifier, dx, dt, i);
@@ -217,4 +224,8 @@ void writeCellField3D_HDF5(HemoCellFields& cellFields, T dx, T dt, plint iter, s
         wrapper.push_back(cellFields[i]->getParticleArg());
         applyProcessingFunctional (bprf,cellFields[i]->getParticleField3D()->getBoundingBox(), wrapper );
     }
+    
+    global.statistics.getCurrent().stop();
+}
+
 }

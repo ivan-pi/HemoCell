@@ -24,6 +24,14 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #ifndef HEMO_ARRAY_H
 #define HEMO_ARRAY_H
 
+#include <cstddef>
+#include <array>
+
+#include "constant_defaults.h"
+
+#include "core/array.h"
+#include "core/geometry3D.h"
+
 namespace hemo {
 
   
@@ -134,6 +142,14 @@ namespace hemo {
     }
     return ret;
   }
+  template<typename _Tp, typename _Tp2, std::size_t _Nm>
+  inline Array<_Tp2, _Nm> operator-(const Array<_Tp, _Nm> & one, const Array<_Tp2, _Nm> & two) {
+    Array<_Tp2, _Nm> ret;
+    for (std::size_t i = 0 ; i < _Nm ; i++ ) {
+      ret[i] = one[i]-two[i];
+    }
+    return ret;
+  }
   template<typename _Tp, std::size_t _Nm>
   inline Array<_Tp, _Nm> operator-(const Array<_Tp, _Nm> & one) {
     Array<_Tp, _Nm> ret;
@@ -179,8 +195,8 @@ namespace hemo {
     return ret;
   }
   
-  template<typename _Tp>
-  inline void crossProduct (const Array<_Tp, 3>& one, const Array<_Tp,3> & two, Array<_Tp,3> & result) {
+  template<typename _Tp,typename _Tp2, typename _Tp3>
+  inline void crossProduct (const Array<_Tp, 3>& one, const Array<_Tp2,3> & two, Array<_Tp3,3> & result) {
     result[0] = one[1]*two[2] - one[2]*two[1];
     result[1] = one[2]*two[0] - one[0]*two[2];
     result[2] = one[0]*two[1] - one[1]*two[0];
@@ -193,9 +209,25 @@ namespace hemo {
     return result;
   };
   
+  template<typename _Tp, typename _Tp2>
+  inline Array<T,3> crossProduct (const Array<_Tp, 3>& one, const Array<_Tp2,3> & two) {
+    Array<T,3> result;
+    crossProduct(one, two, result);
+    return result;
+  };
+  
   template<typename _Tp, std::size_t _Nm>
   inline _Tp dot(const Array<_Tp, _Nm> & one, const Array<_Tp, _Nm> & two) {
     _Tp ret = 0;
+    for (std::size_t i = 0 ; i < _Nm ; i++ ) {
+      ret += one[i]*two[i];
+    }
+    return ret;
+  };
+  
+  template<typename _Tp, typename _Tp2, std::size_t _Nm>
+  inline T dot(const Array<_Tp, _Nm> & one, const Array<_Tp2, _Nm> & two) {
+    T ret = 0;
     for (std::size_t i = 0 ; i < _Nm ; i++ ) {
       ret += one[i]*two[i];
     }
@@ -228,6 +260,11 @@ namespace hemo {
     crossProduct(e1, e2, cross);
     
     return (_Tp) 0.5 * norm(cross);
+  }
+  
+  template<typename _Tp>
+  _Tp computeLength(const Array<_Tp,3> & v) {
+    return sqrt(v[0]*v[0]+v[1]*v[1]+v[2]*v[2]);
   }
   
   template<typename _Tp>

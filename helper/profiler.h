@@ -30,6 +30,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #include <map>
 #include <logfile.h>
 
+namespace hemo {
 class Profiler {
 public:
   Profiler(std::string name_);
@@ -46,6 +47,7 @@ public:
   Profiler & operator[] (std::string);
   Profiler & getCurrent();
 
+  std::string static toString(std::chrono::high_resolution_clock::duration);
 
 private:
   void stop_nowarn();
@@ -59,6 +61,6 @@ private:
   Profiler & parent;
   Profiler * current = this;
 };
-
+}
 #endif /* PROFILER_H */
 

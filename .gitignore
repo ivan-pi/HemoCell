@@ -2,10 +2,9 @@
 log/
 tmp/
 palabos/
-build/hemocell/*
-build/singularity/*
-!/build/hemocell/CMakeLists.txt
-!/build/singularity/build.def
+build/
+!build/*/CMakeLists.txt
+!build/*/build.def
 
 doc/doxygen/*/
 doc/user_guide/_build/*

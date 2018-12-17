@@ -1,9 +1,9 @@
 #!/bin/bash
 set -e
 
-cd ${CI_PROJECT_DIR}/cases/pipeflow
+cd ${CI_PROJECT_DIR}/examples/pipeflow
 mpirun --allow-run-as-root -n 4 ./pipeflow ../../scripts/ci/config-pipeflow.xml
-cd log
+cd tmp/log
 if [ -n "`cat logfile | grep "# of cells" | cut -d: -f2 | cut -d" " -f2 | grep -v 32`" ]; then
   echo "Error in number of cells, 32 Expected"
   exit 1
@@ -23,10 +23,25 @@ fi
 
 echo "Checking for similar output, differing CPU's"
 
-cd ../
+cd ../../
 mpirun --allow-run-as-root -n 2 ./pipeflow ../../scripts/ci/config-pipeflow.xml
 
-if [ -n "`diff -C 0 log/logfile log/logfile.0  | tail -n +2 | grep -v atomic-block |grep -v Voxelizer | grep -v '\-\-\-' | grep -v '\*\*\*'`" ]; then
+if [ -n "`diff -C 0 tmp/log/logfile tmp_0/log/logfile  | tail -n +2 | grep -v atomic-block |grep -v Voxelizer | grep -v '\-\-\-' | grep -v '\*\*\*'`" ]; then
   echo "Output of differing CPU's is not identical, indicating some boundary problem probably"
+  exit 1
+fi
+
+echo "Checking checkpointing"
+cd tmp/checkpoint/
+if [ ! -s "lattice.dat" ] || [ ! -s "lattice.dat.old" ]; then
+  echo "Error in checkpointing lattice output"
+  exit 1
+fi
+if [ ! -s "particleField.dat" ] || [ ! -s "particleField.dat.old" ]; then
+  echo "Error in checkpointing particleField output"
+  exit 1
+fi
+if [ ! -s "checkpoint.xml" ] || [ ! -s "checkpoint.xml.old" ]; then
+  echo "Error in checkpointing xml output"
   exit 1
 fi

@@ -24,12 +24,19 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #ifndef HEMOCELLPARTICLEFIELD_H
 #define HEMOCELLPARTICLEFIELD_H
 
-#include "hemocell_internal.h"
+namespace hemo {
+  class HemoCellParticleField;
+}
+
 #include "hemoCellFields.h"
 #include "hemoCellParticleDataTransfer.h"
 #include "hemoCellParticle.h"
 
-class HemoCellParticleField : public AtomicBlock3D {
+#include "atomicBlock/blockLattice3D.hh"
+
+namespace hemo {
+using namespace std;
+class HemoCellParticleField : public plb::AtomicBlock3D {
 public:
     HemoCellParticleField(plint nx, plint ny, plint nz);
     virtual ~HemoCellParticleField();
@@ -38,42 +45,47 @@ public:
     HemoCellParticleField* clone() const;
     void swap(HemoCellParticleField& rhs);
     virtual void applyConstitutiveModel(bool forced = false);
-    virtual void addParticle(Box3D domain, HemoCellParticle* particle);
-    void addParticle(Box3D domain, const HemoCellParticle::serializeValues_t & sv);
+    virtual void addParticle(HemoCellParticle* particle);
+    void addParticle(const HemoCellParticle::serializeValues_t & sv);
 
-    virtual void removeParticles(Box3D domain);
-    virtual void removeParticles_inverse(Box3D domain);
-    virtual void removeParticles(Box3D domain,plint tag);
+    virtual void removeParticles(plb::Box3D domain);
+    virtual void removeParticles_inverse(plb::Box3D domain);
+    virtual void removeParticles(plb::Box3D domain,plint tag);
     virtual void removeParticles(plint tag);
-    virtual void findParticles(Box3D domain,
+    virtual void findParticles(plb::Box3D domain,
                                std::vector<HemoCellParticle*>& found);
-    virtual void findParticles(Box3D domain,
+    virtual void findParticles(plb::Box3D domain,
                                std::vector<const HemoCellParticle*>& found) const;
-    void findParticles(Box3D domain,
+    void findParticles(plb::Box3D domain,
                                std::vector<HemoCellParticle*>& found,
                                pluint type);
     virtual void advanceParticles();
     void applyRepulsionForce(bool forced = false);
-    virtual void interpolateFluidVelocity(Box3D domain);
-    virtual void spreadParticleForce(Box3D domain);
+    virtual void interpolateFluidVelocity(plb::Box3D domain);
+    virtual void spreadParticleForce(plb::Box3D domain);
     void separateForceVectors();
     void unifyForceVectors();
-
+    
+    virtual void findInternalParticleGridPoints(plb::Box3D domain);
+    virtual void internalGridPointsMembrane(plb::Box3D domain);
+    
     int deleteIncompleteCells(pluint ctype, bool verbose=true);
     int deleteIncompleteCells(bool verbose=true);
     void syncEnvelopes();
     void populateBoundaryParticles();
     void applyBoundaryRepulsionForce();
     
-    void setlocalDomain(Box3D & localDomain_);
+    void solidifyCells();
+    
+    void setlocalDomain(plb::Box3D & localDomain_);
 
     void computeGridPosition ( hemo::Array<T,3> const& position,
                     plint& iX, plint& iY, plint& iZ ) const;
     inline void computeGridPosition ( hemo::Array<T,3> const& position,
                     plint* iX, plint* iY, plint* iZ ) const;
     
-    inline bool isContainedABS(const hemo::Array<T,3> & pos, const Box3D & box) const {
-	    Dot3D const& location = this->getLocation();
+    inline bool isContainedABS(const hemo::Array<T,3> & pos, const plb::Box3D & box) const {
+	    plb::Dot3D const& location = this->getLocation();
 	    T x = pos[0]-location.x;
 	    T y = pos[1]-location.y;
 	    T z = pos[2]-location.z;
@@ -82,31 +94,31 @@ public:
 	           (y > box.y0-0.5) && (y <= box.y1+0.5) &&
 	           (z > box.z0-0.5) && (z <= box.z1+0.5);
 
-	}
-    Box3D & getBoundingBox() {
+    }
+    plb::Box3D & getBoundingBox() {
       return boundingBox;
     }
     //Ugly output functions:
-    void outputPositions(Box3D,vector<vector<T>>&, pluint, std::string&); 
-    void outputForces   (Box3D,vector<vector<T>>&, pluint, std::string&);
-    void outputForceVolume   (Box3D,vector<vector<T>>&, pluint, std::string&);
-    void outputForceArea   (Box3D,vector<vector<T>>&, pluint, std::string&);
-    void outputForceBending   (Box3D,vector<vector<T>>&, pluint, std::string&);
-    void outputForceLink   (Box3D,vector<vector<T>>&, pluint, std::string&);
-    void outputForceVisc    (Box3D,vector<vector<T>>&, pluint, std::string&);
-    void outputForceRepulsion  (Box3D,vector<vector<T>>&, pluint, std::string&);
+    void outputPositions(plb::Box3D,vector<vector<T>>&, pluint, std::string&); 
+    void outputForces   (plb::Box3D,vector<vector<T>>&, pluint, std::string&);
+    void outputForceVolume   (plb::Box3D,vector<vector<T>>&, pluint, std::string&);
+    void outputForceArea   (plb::Box3D,vector<vector<T>>&, pluint, std::string&);
+    void outputForceBending   (plb::Box3D,vector<vector<T>>&, pluint, std::string&);
+    void outputForceLink   (plb::Box3D,vector<vector<T>>&, pluint, std::string&);
+    void outputForceVisc    (plb::Box3D,vector<vector<T>>&, pluint, std::string&);
+    void outputForceRepulsion  (plb::Box3D,vector<vector<T>>&, pluint, std::string&);
     
-    void outputTriangles   (Box3D,vector<vector<plint>>&, pluint, std::string&);
-    void outputInnerLinks   (Box3D,vector<vector<plint>>&, pluint, std::string&);
+    void outputTriangles   (plb::Box3D,vector<vector<plint>>&, pluint, std::string&);
+    void outputInnerLinks   (plb::Box3D,vector<vector<plint>>&, pluint, std::string&);
     
-    void outputVertexId    (Box3D,vector<vector<T>>&, pluint, std::string&);
-    void outputCellId    (Box3D,vector<vector<T>>&, pluint, std::string&);
-    void outputForceInnerLink   (Box3D,vector<vector<T>>&, pluint, std::string&);
+    void outputVertexId    (plb::Box3D,vector<vector<T>>&, pluint, std::string&);
+    void outputCellId    (plb::Box3D,vector<vector<T>>&, pluint, std::string&);
+    void outputForceInnerLink   (plb::Box3D,vector<vector<T>>&, pluint, std::string&);
 
 
     void AddOutputMap();
-    map<int,void (HemoCellParticleField::*)(Box3D,vector<vector<T>>&,pluint,std::string&)> outputFunctionMap;
-    void passthroughpass(int,Box3D,vector<vector<T>>&,pluint,std::string&);
+    map<int,void (HemoCellParticleField::*)(plb::Box3D,vector<vector<T>>&,pluint,std::string&)> outputFunctionMap;
+    void passthroughpass(int,plb::Box3D,vector<vector<T>>&,pluint,std::string&);
 
 public:
     virtual HemoCellParticleDataTransfer& getDataTransfer();
@@ -114,18 +126,20 @@ public:
     static std::string getBlockName();
     static HemoCellFields* cellFields;
     pluint atomicBlockId;
-    BlockLattice3D<T, DESCRIPTOR> * atomicLattice = 0;
+    plb::BlockLattice3D<T, DESCRIPTOR> * atomicLattice = 0;
+    plb::BlockLattice3D<T, CEPAC_DESCRIPTOR> * CEPAClattice = 0;
+
     vector<plint> neighbours;
-    vector<Dot3D> boundaryParticles;
+    vector<plb::Dot3D> boundaryParticles;
     pluint envelopeSize;
     pluint getsize() { return particles.size();}
     plint nearestCell(T const) const;
-    static std::string basicType() {return std::string(NativeType<T>::getName());}
+    static std::string basicType() {return std::string(plb::NativeType<T>::getName());}
     static std::string descriptorType() {
       return std::string(DESCRIPTOR<T>::name);
     }
     vector<HemoCellParticle> particles;
-    Box3D boundingBox; 
+    plb::Box3D boundingBox; 
     int nFluidCells = 0;
     
 private:
@@ -134,6 +148,13 @@ private:
   bool ppc_up_to_date = false;
   bool preinlet_ppc_up_to_date = false;
   bool pg_up_to_date = false;
+public:
+  void invalidate_lpc() { lpc_up_to_date = false;};
+  void invalidate_ppt() { ppt_up_to_date = false;};
+  void invalidate_ppc() { ppc_up_to_date = false;};
+  void invalidate_preinlet_ppc() { preinlet_ppc_up_to_date = false;};
+  void invalidate_pg() { pg_up_to_date = false;};
+private:
   vector<vector<unsigned int>> _particles_per_type;
   map<int,vector<int>> _particles_per_cell;
   map<int,vector<int>> _preinlet_particles_per_cell;
@@ -158,15 +179,19 @@ public:
   const map<int,vector<int>> & get_particles_per_cell();
   const map<int,vector<int>> & get_preinlet_particles_per_cell();
   const map<int,bool> & get_lpc();
+  
+  vector<hemo::Array<plint, 3>> internalPoints; // Store found interior points
+  
     
     //vector<vector<vector<vector<HemoCellParticle*>>>> particle_grid; //maybe better to make custom data structure, But that would be slower
     void insert_ppc(HemoCellParticle* particle,unsigned int index);
     void insert_preinlet_ppc(HemoCellParticle* particle,unsigned int index);
 
-    HemoCellParticleDataTransfer dataTransfer;
+    HemoCellParticleDataTransfer & particleDataTransfer;
 public:
-    Box3D localDomain;
+    plb::Box3D localDomain;
 
 };
 
+}
 #endif

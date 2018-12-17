@@ -24,11 +24,10 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #ifndef PARTICLE_HDF5IO_H
 #define PARTICLE_HDF5IO_H
 
-#include "hemocell_internal.h"
 #include "hemoCellParticle.h"
 #include "hemoCellFields.h"
 #include "hemoCellField.h"
-
+namespace hemo {
 void writeCellField3D_HDF5(HemoCellFields& cellFields, T dx, T dt, plint iter, std::string preString="");
 
 
@@ -40,7 +39,7 @@ public:
             plint iter_, std::string identifier_,
             T dx_, T dt_, int i);
     /// Arguments: [0] Particle-field. [1] Lattice.
-    ~WriteCellField3DInMultipleHDF5Files(){};
+    ~WriteCellField3DInMultipleHDF5Files(){}; //Fuck C c++
     virtual void processGenericBlocks(Box3D domain, std::vector<AtomicBlock3D*> fields);
     virtual WriteCellField3DInMultipleHDF5Files* clone() const;
     virtual void getTypeOfModification(std::vector<modif::ModifT>& modified) const;
@@ -53,5 +52,6 @@ private:
     double dt;
     int ctype;
 };
+}
 #endif  // FICSION_PARTICLE_HDF5IO_H
 

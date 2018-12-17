@@ -21,10 +21,15 @@ GNU Affero General Public License for more details.
 You should have received a copy of the GNU Affero General Public License
 along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
+#include "constant_defaults.h"
 #include "config.h"
+#include "logfile.h"
 #include "genericFunctions.h"
 #include <stdexcept>
 #include <sys/stat.h>
+
+#include "parallelism/mpiManager.h"
+#include "io/parallelIO.h"
 
 namespace hemo {
   Config::Config(string paramXmlFileName) 
@@ -39,7 +44,7 @@ namespace hemo {
   
   void Config::load(std::string paramXmlFileName) {
     if (!file_exists(paramXmlFileName)) {
-      pcout << paramXmlFileName + " is not an existing config file, exiting ..." << endl;
+      plb::pcout << paramXmlFileName + " is not an existing config file, exiting ..." << std::endl;
       exit(1);
     }
     orig = new tinyxml2::XMLDocument();
@@ -81,42 +86,62 @@ namespace hemo {
     }
   }
 
-  
-}
-
-void loadDirectories(std::string configFileName, Config * cfg)  {
+void loadDirectories(hemo::Config * cfg, bool edit_out_dir)  {
     //TODO This should be done through hemocell config, not some palabos global
-  global::directories().setOutputDir("./tmp/");
-  global::directories().setInputDir("./");
-  global::IOpolicy().activateParallelIO(true);
-  global::IOpolicy().setStlFilesHaveLowerBound(false);
+  plb::global::directories().setInputDir("./");
+  plb::global::IOpolicy().activateParallelIO(true);
+  plb::global::IOpolicy().setStlFilesHaveLowerBound(false);
 
   //setting outdir
-  try {
-    std::string outDir = (*cfg)["parameters"]["outputDirectory"].read<string>() + "/";
-    if (outDir[0] != '/') {
-          outDir = "./" + outDir;
+  if (edit_out_dir) {
+    try {
+      std::string outDir = (*cfg)["parameters"]["outputDirectory"].read<string>();
+      while (outDir[outDir.size()-1] == '/') {
+        outDir.pop_back();
+      }
+      if (outDir[0] != '/') {
+            outDir = "./" + outDir;
+      }
+      plb::global::directories().setOutputDir(outDir);
+    } catch (std::invalid_argument & exeption) {
+      plb::global::directories().setOutputDir("./tmp");
     }
-    global::directories().setOutputDir(outDir);
-  } catch (std::invalid_argument & exeption) {}
-  mkpath((global::directories().getOutputDir() + "/hdf5/").c_str(), 0777);
-
-  //Setting logfile and logdir  
-  global::directories().setLogOutDir("./log/");
+    string filename = plb::global::directories().getOutputDir();
+    if (!file_exists(filename)) {
+      goto outdir_done;
+    }
+    for (int i = 0; i < INT_MAX; i++) {
+      filename = plb::global::directories().getOutputDir() + "_" + to_string(i);
+      if (!file_exists(filename)) {
+        plb::global::directories().setOutputDir(filename);
+        goto outdir_done; 
+      }
+    }
+outdir_done:
+    plb::global::directories().setOutputDir(plb::global::directories().getOutputDir() + "/");
+    MPI_Barrier(MPI_COMM_WORLD);
+  }
+  if (!plb::global::mpi().getRank()) {
+    mkpath((plb::global::directories().getOutputDir() + "/hdf5/").c_str(), 0777);
+  }
+  //Setting logdir  
   try {
     std::string outDir = (*cfg)["parameters"]["logDirectory"].read<string>() + "/";
-    if (outDir[0] != '/') {
-          outDir = "./" + outDir;
-    }
-    global::directories().setLogOutDir(outDir);
-  } catch (std::invalid_argument & exeption) {}
+    outDir = plb::global::directories().getOutputDir() + "/" + outDir;
+    plb::global::directories().setLogOutDir(outDir);
+  } catch (std::invalid_argument & exeption) {
+    plb::global::directories().setLogOutDir(plb::global::directories().getOutputDir() + "/log/");
+  }
+
+  //Setting logfile
   string logfilename = "logfile";
   try {
     logfilename = (*cfg)["parameters"]["logFile"].read<string>();
   } catch (std::invalid_argument & exeption) {}
-  mkpath(global::directories().getLogOutDir().c_str(), 0777);
-
-  string base_filename =  global::directories().getLogOutDir() + logfilename;
+  if (!plb::global::mpi().getRank()) {
+    mkpath(plb::global::directories().getLogOutDir().c_str(), 0777);
+  }
+  string base_filename =  plb::global::directories().getLogOutDir() + logfilename;
   string filename = base_filename;
   if (!file_exists(base_filename)) { 
     goto logfile_open_done; 
@@ -130,22 +155,43 @@ void loadDirectories(std::string configFileName, Config * cfg)  {
 
   logfile_open_done:
 
-  hlog.filename = filename;
-  global::mpi().barrier();
-  if (global::mpi().getRank() == 0) {
-    hlog.logfile.open(filename , std::fstream::out);
-    if (!hlog.logfile.is_open()) {
-      pcerr << "(HemoCell) (LogFile) Error opening logfile, exiting" << endl;
+  hemo::hlog.filename = filename;
+  plb::global::mpi().barrier();
+  if (plb::global::mpi().getRank() == 0) {
+    hemo::hlog.logfile.open(filename , std::fstream::out);
+    if (!hemo::hlog.logfile.is_open()) {
+      plb::pcerr << "(HemoCell) (LogFile) Error opening logfile, exiting" << std::endl;
       exit(1);
     }
   }  
+  
+  //Setting CheckpointDirectory
+  try { 
+    hemo::global.checkpointDirectory = plb::global::directories().getOutputDir() + "/" + (*cfg)["parameters"]["checkpointDirectory"].read<string>() + "/";
+  } catch (std::invalid_argument & exception) {
+    hemo::global.checkpointDirectory = plb::global::directories().getOutputDir() + "/checkpoint/";
+  }
 }
 
-ConfigValues globalConfigValues;
+ConfigValues global;
 
 void loadGlobalConfigValues(hemo::Config * cfg) {
   try {
-   globalConfigValues.cellsDeletedInfo = (*cfg)["verbose"]["cellsDeletedInfo"].read<int>();
+   global.cellsDeletedInfo = (*cfg)["verbose"]["cellsDeletedInfo"].read<int>();
   } catch(std::invalid_argument & e) {}
+  try {
+   global.enableCEPACfield = (*cfg)["parameters"]["enableCEPACfield"].read<int>();
+  } catch(std::invalid_argument & e) {}
+  try {
+   global.enableSolidifyMechanics = (*cfg)["parameters"]["enableSolidifyMechanics"].read<int>();
+#ifndef SOLIDIFY_MECHANICS
+   if (global.enableSolidifyMechanics) {
+     hlog << "(Hemocell) (Config) Error EnableSolidifyMechanics is true but SOLIDIFY_MECHANICS (compile time) Is not defined" << std::endl;
+     exit(1);
+   }
+#endif
+  } catch(std::invalid_argument & e) {}
+}
+
 }
 
