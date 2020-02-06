@@ -40,12 +40,30 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #include "palabos3D.h"
 #include "palabos3D.hh"
 #include "preInlet.h"
+#include "bindingField.h"
+#include "interiorViscosity.h"
 
 using namespace hemo;
 
 volatile sig_atomic_t interrupted = 0;
+bool interrupt_handler_set = false;
 void set_interrupt(int signum) {
   interrupted = 1;
+}
+
+void set_interrupt_handler() {
+  ///Set signal handlers to exit gracefully on many signals
+  struct sigaction sa;
+  memset(&sa, 0, sizeof(struct sigaction));
+  sa.sa_handler = set_interrupt;
+  sigaction(SIGINT,&sa,0);
+  sigaction(SIGTERM,&sa,0);
+  sigaction(SIGHUP,&sa,0);
+  sigaction(SIGQUIT,&sa,0);
+  sigaction(SIGABRT,&sa,0);
+  sigaction(SIGUSR1,&sa,0);
+  sigaction(SIGUSR2,&sa,0);
+  interrupt_handler_set = true;
 }
 
 HemoCell::HemoCell(char * configFileName, int argc, char * argv[])
@@ -72,19 +90,6 @@ HemoCell::HemoCell(char * configFileName, int argc, char * argv[])
   //Start statistics
   global.statistics.start();
   
-  ///Set signal handlers to exit gracefully on many signals
-  struct sigaction sa;
-  memset(&sa, 0, sizeof(struct sigaction));
-  sa.sa_handler = set_interrupt;
-  sigaction(SIGINT,&sa,0);
-  sigaction(SIGTERM,&sa,0);
-  sigaction(SIGHUP,&sa,0);
-  sigaction(SIGQUIT,&sa,0);
-  sigaction(SIGABRT,&sa,0);
-  sigaction(SIGUSR1,&sa,0);
-  sigaction(SIGUSR2,&sa,0);
- 
-  
 }
 
 HemoCell::~HemoCell() {
@@ -101,8 +106,8 @@ HemoCell::~HemoCell() {
   if (lattice) {
     delete lattice;
   }
-  if (lattice_management) {
-    delete lattice_management;
+  if (domain_lattice_management) {
+    delete domain_lattice_management;
   }
   if (loadBalancer) {
     delete loadBalancer;
@@ -110,8 +115,8 @@ HemoCell::~HemoCell() {
   if (preInlet) { 
     delete preInlet;
   }
-  if (preinlet_management) {
-    delete preinlet_management;
+  if (preinlet_lattice_management) {
+    delete preinlet_lattice_management;
   }
 }
 
@@ -122,6 +127,9 @@ void HemoCell::latticeEquilibrium(T rho, hemo::Array<T, 3> vel) {
 }
 
 void HemoCell::initializeCellfield() {
+  if (!domain_lattice) {
+    domain_lattice = lattice;
+  }
   cellfields = new HemoCellFields(*lattice,(*cfg)["domain"]["particleEnvelope"].read<int>(),*this);
 
   //Set envelope of fluid to 1 again, while maintaining outer one for correct force distribution
@@ -184,23 +192,34 @@ void HemoCell::loadParticles() {
 
 void HemoCell::loadCheckPoint() {
   hlog << "(HemoCell) (Saving Functions) Loading Checkpoint"  << endl;
-  if (global.enableInteriorViscosity) {
-    hlog << "(HemoCell) (Saving Functions) Interior Viscosity Entire Grid Refresh does not behave sane with checkpointing" << endl;
-  }
   cellfields->load(documentXML, iter, cfg);
+  if (global.enableSolidifyMechanics) {
+    bindingFieldHelper::restore(*cellfields);
+  }
+  if (global.enableInteriorViscosity) {
+    InteriorViscosityHelper::restore(*cellfields);
+  }
 }
 
 void HemoCell::saveCheckPoint() {
   hlog << "(HemoCell) (Saving Functions) Saving Checkpoint at timestep " << iter << endl;
-  if (global.enableInteriorViscosity) {
-    hlog << "(HemoCell) (Saving Functions) Interior Viscosity Entire Grid Refresh does not behave sane with checkpointing" << endl;
-  }
   cellfields->save(documentXML, iter, cfg);
+  if (global.enableSolidifyMechanics) {
+    bindingFieldHelper::get(*cellfields).checkpoint();
+  }
+  if (global.enableInteriorViscosity) {
+    InteriorViscosityHelper::get(*cellfields).checkpoint();
+  }
 }
 
 void HemoCell::writeOutput() {
   global.statistics["output"].start();
   std::string tpi = ((iter != lastOutputAt) ? Profiler::toString((global.statistics.elapsed()-lastOutput)/(iter-lastOutputAt)):"0.00");
+
+  //save Residence time
+  //Needs to be used before LastOutputAT is updated
+  cellfields->updateResidenceTime((iter - lastOutputAt));
+
   
   lastOutput = global.statistics.elapsed();
   lastOutputAt  = iter;
@@ -241,6 +260,9 @@ void HemoCell::writeOutput() {
   }
   global::mpi().barrier();
 
+
+
+  
   //Write Output
   global.statistics.getCurrent()["writeOutput"].start();
   writeCellField3D_HDF5(*cellfields,param::dx,param::dt,iter);
@@ -259,6 +281,9 @@ void HemoCell::writeOutput() {
 }
 
 void HemoCell::checkExitSignals() {
+  if (!interrupt_handler_set) {
+    set_interrupt_handler();
+  }
   if (interrupted == 1) {
     cout << endl << "Caught Signal, saving work and quitting!" << endl << std::flush;
     exit(1);
@@ -300,7 +325,9 @@ void HemoCell::iterate() {
   }
 
   if(global.enableSolidifyMechanics && !(iter%cellfields->solidifyTimescale)) {
+    global.statistics.getCurrent()["solidifyCells"].start();
     cellfields->solidifyCells();
+    global.statistics.getCurrent().stop();
   }
   // ### 5 ###
   cellfields->advanceParticles();
@@ -310,10 +337,14 @@ void HemoCell::iterate() {
 
   if (global.enableInteriorViscosity && iter % cellfields->interiorViscosityEntireGridTimescale == 0) {
     cellfields->deleteIncompleteCells(); // Must be done, next function expects whole cells
+    global.statistics.getCurrent()["internalParticleGridPoints"].start();
     cellfields->findInternalParticleGridPoints();
+    global.statistics.getCurrent().stop();
   }
   if (global.enableInteriorViscosity && iter % cellfields->interiorViscosityTimescale == 0) {
+    global.statistics.getCurrent()["internalGridPointsMembrane"].start();
     cellfields->internalGridPointsMembrane();
+    global.statistics.getCurrent().stop();
   }
   
   //We can safely delete non-local cells here, assuming model timestep is divisible by velocity timestep
@@ -369,7 +400,7 @@ void HemoCell::setInteriorViscosityTimeScaleSeperation(unsigned int separation, 
   cellfields->interiorViscosityEntireGridTimescale = separation_entire_grid;
 }
 
-void HemoCell::setMinimumDistanceFromSolid(string name, T distance) {
+void HemoCell::setInitialMinimumDistanceFromSolid(string name, T distance) {
   hlog << "(HemoCell) (Set Distance) Setting minimum distance from solid to " << distance << " micrometer for " << name << endl; 
   if (loadParticlesIsCalled) {
     pcout << "(HemoCell) (Set Distance) WARNING: this function is called after the particles are loaded, so it probably has no effect" << endl;
@@ -407,6 +438,7 @@ void HemoCell::initializeLattice(MultiBlockManagement3D const & management) {
             defaultMultiBlockPolicy3D().getCombinedStatistics(),
             defaultMultiBlockPolicy3D().getMultiCellAccess<T, DESCRIPTOR>(),
             new GuoExternalForceBGKdynamics<T, DESCRIPTOR>(1.0/param::tau));
+    domain_lattice = lattice;
     return;
   }
   if (global::mpi().getSize() <= 1) {
@@ -422,6 +454,11 @@ void HemoCell::initializeLattice(MultiBlockManagement3D const & management) {
   if (preInlet->nProcs == 0) {
     preInlet->nProcs = 1;
   }
+
+  // JON addition: Try to read in number of processors allocated to preinlet from config file. 
+  // Just continue with value computed above if reading it from XML throws an exception because it does not exist
+  try  { preInlet->nProcs = (*cfg)["preInlet"]["parameters"]["nProcs"].read<int>(); }
+  catch (const std::invalid_argument& e)  {}
   
   int nProcs = global::mpi().getSize()-preInlet->nProcs;
   
@@ -450,25 +487,27 @@ void HemoCell::initializeLattice(MultiBlockManagement3D const & management) {
   
   SparseBlockStructure3D sb_preinlet = createRegularDistribution3D(preInlet->location,preInlet->nProcs);
   ExplicitThreadAttribution * eta_preinlet = new ExplicitThreadAttribution(preInlet->BlockToMpi);
-  preinlet_management = new MultiBlockManagement3D(sb_preinlet,eta_preinlet,management.getEnvelopeWidth(),management.getRefinementLevel());
+  preinlet_lattice_management = new MultiBlockManagement3D(sb_preinlet,eta_preinlet,management.getEnvelopeWidth(),management.getRefinementLevel());
 
   SparseBlockStructure3D sb = createRegularDistribution3D(management.getBoundingBox(),nProcs);
   ExplicitThreadAttribution * eta = new ExplicitThreadAttribution(BlockToMpi);
-  lattice_management = new MultiBlockManagement3D(sb,eta,management.getEnvelopeWidth(),management.getRefinementLevel());
+  domain_lattice_management = new MultiBlockManagement3D(sb,eta,management.getEnvelopeWidth(),management.getRefinementLevel());
+  
+  preinlet_lattice = new MultiBlockLattice3D<T,DESCRIPTOR>(*preinlet_lattice_management,
+            defaultMultiBlockPolicy3D().getBlockCommunicator(),
+            defaultMultiBlockPolicy3D().getCombinedStatistics(),
+            defaultMultiBlockPolicy3D().getMultiCellAccess<T, DESCRIPTOR>(),
+            new GuoExternalForceBGKdynamics<T, DESCRIPTOR>(1.0/param::tau));
+  domain_lattice = new MultiBlockLattice3D<T,DESCRIPTOR>(*domain_lattice_management,
+            defaultMultiBlockPolicy3D().getBlockCommunicator(),
+            defaultMultiBlockPolicy3D().getCombinedStatistics(),
+            defaultMultiBlockPolicy3D().getMultiCellAccess<T, DESCRIPTOR>(),
+            new GuoExternalForceBGKdynamics<T, DESCRIPTOR>(1.0/param::tau));
   
   if (!partOfpreInlet) {
-    lattice = new MultiBlockLattice3D<T,DESCRIPTOR>(*lattice_management,
-            defaultMultiBlockPolicy3D().getBlockCommunicator(),
-            defaultMultiBlockPolicy3D().getCombinedStatistics(),
-            defaultMultiBlockPolicy3D().getMultiCellAccess<T, DESCRIPTOR>(),
-            new GuoExternalForceBGKdynamics<T, DESCRIPTOR>(1.0/param::tau));
+    lattice = domain_lattice;
   } else {
-    
-    lattice = new MultiBlockLattice3D<T,DESCRIPTOR>(*preinlet_management,
-            defaultMultiBlockPolicy3D().getBlockCommunicator(),
-            defaultMultiBlockPolicy3D().getCombinedStatistics(),
-            defaultMultiBlockPolicy3D().getMultiCellAccess<T, DESCRIPTOR>(),
-            new GuoExternalForceBGKdynamics<T, DESCRIPTOR>(1.0/param::tau));
+    lattice = preinlet_lattice;
     preInlet->partOfpreInlet = true;
   }
 }

@@ -47,6 +47,7 @@ public:
     virtual void applyConstitutiveModel(bool forced = false);
     virtual void addParticle(HemoCellParticle* particle);
     void addParticle(const HemoCellParticle::serializeValues_t & sv);
+    void addParticlePreinlet(const HemoCellParticle::serializeValues_t & sv);
 
     virtual void removeParticles(plb::Box3D domain);
     virtual void removeParticles_inverse(plb::Box3D domain);
@@ -65,6 +66,7 @@ public:
     virtual void spreadParticleForce(plb::Box3D domain);
     void separateForceVectors();
     void unifyForceVectors();
+    void updateResidenceTime(unsigned int rtime);
     
     virtual void findInternalParticleGridPoints(plb::Box3D domain);
     virtual void internalGridPointsMembrane(plb::Box3D domain);
@@ -74,6 +76,9 @@ public:
     void syncEnvelopes();
     void populateBoundaryParticles();
     void applyBoundaryRepulsionForce();
+    void populateBindingSites(plb::Box3D & domain);
+
+    T eigenValueFromCell(plb::Cell<T,DESCRIPTOR> & cell);
     
     void solidifyCells();
     
@@ -100,6 +105,7 @@ public:
     }
     //Ugly output functions:
     void outputPositions(plb::Box3D,vector<vector<T>>&, pluint, std::string&); 
+    void outputVelocities(plb::Box3D,vector<vector<T>>&, pluint, std::string&); 
     void outputForces   (plb::Box3D,vector<vector<T>>&, pluint, std::string&);
     void outputForceVolume   (plb::Box3D,vector<vector<T>>&, pluint, std::string&);
     void outputForceArea   (plb::Box3D,vector<vector<T>>&, pluint, std::string&);
@@ -114,6 +120,7 @@ public:
     void outputVertexId    (plb::Box3D,vector<vector<T>>&, pluint, std::string&);
     void outputCellId    (plb::Box3D,vector<vector<T>>&, pluint, std::string&);
     void outputForceInnerLink   (plb::Box3D,vector<vector<T>>&, pluint, std::string&);
+    void outputResTime   (plb::Box3D,vector<vector<T>>&, pluint, std::string&);
 
 
     void AddOutputMap();
@@ -180,7 +187,8 @@ public:
   const map<int,vector<int>> & get_preinlet_particles_per_cell();
   const map<int,bool> & get_lpc();
   
-  vector<hemo::Array<plint, 3>> internalPoints; // Store found interior points
+  set<plb::Dot3D> internalPoints; // Store found interior points
+  plb::ScalarField3D<T> * interiorViscosityField = 0;
   
     
     //vector<vector<vector<vector<HemoCellParticle*>>>> particle_grid; //maybe better to make custom data structure, But that would be slower
@@ -190,7 +198,10 @@ public:
     HemoCellParticleDataTransfer & particleDataTransfer;
 public:
     plb::Box3D localDomain;
-
+    
+    //These should be edited through the helper/solidifyField.h functions
+    std::set<plb::Dot3D> bindingSites;
+    plb::ScalarField3D<bool> * bindingField = 0;
 };
 
 }

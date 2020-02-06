@@ -865,9 +865,36 @@ index 2db1e50..60134da 100644
      std::vector<PeriodicOverlap3D> periodicOverlaps;
      std::vector<PeriodicOverlap3D> periodicOverlapWithRemoteData;
 diff --git a/src/multiBlock/multiBlock3D.cpp b/src/multiBlock/multiBlock3D.cpp
-index 57c178e..bd6f306 100644
+index 57c178e..f6e5e6f 100644
 --- a/src/multiBlock/multiBlock3D.cpp
 +++ b/src/multiBlock/multiBlock3D.cpp
+@@ -250,7 +250,7 @@ MultiBlock3D::MultiBlock3D( MultiBlockManagement3D const& multiBlockManagement_,
+       internalStatistics(),
+       combinedStatistics(combinedStatistics_),
+       statSubscriber(*this),
+-      statisticsOn(true),
++      statisticsOn(false),
+       periodicitySwitch(*this),
+       internalModifT(modif::staticVariables)
+ { 
+@@ -265,7 +265,7 @@ MultiBlock3D::MultiBlock3D(plint nx, plint ny, plint nz, plint envelopeWidth)
+       internalStatistics(),
+       combinedStatistics(defaultMultiBlockPolicy3D().getCombinedStatistics()),
+       statSubscriber(*this),
+-      statisticsOn(true),
++      statisticsOn(false),
+       periodicitySwitch(*this),
+       internalModifT(modif::staticVariables)
+ {
+@@ -297,7 +297,7 @@ MultiBlock3D::MultiBlock3D(MultiBlock3D const& rhs, Box3D subDomain, bool crop)
+       internalStatistics(),
+       combinedStatistics(rhs.combinedStatistics->clone()),
+       statSubscriber(*this),
+-      statisticsOn(true),
++      statisticsOn(false),
+       periodicitySwitch(*this),
+       internalModifT(rhs.internalModifT)
+ {
 @@ -352,6 +352,10 @@ MultiBlockManagement3D const& MultiBlock3D::getMultiBlockManagement() const {
      return multiBlockManagement;
  }
@@ -915,6 +942,25 @@ index 866622e..8f8c4cb 100644
  }
  
  bool MultiBlockManagement3D::equivalentTo(MultiBlockManagement3D const& rhs) const {
+diff --git a/src/multiBlock/multiDataField3D.hh b/src/multiBlock/multiDataField3D.hh
+index 0729c59..3ed05c1 100644
+--- a/src/multiBlock/multiDataField3D.hh
++++ b/src/multiBlock/multiDataField3D.hh
+@@ -802,9 +802,11 @@ void MultiNTensorField3D<T>::reset() {
+ 
+ template<typename T>
+ void MultiNTensorField3D<T>::allocateFields() {
+-    std::vector<T> iniVal(this->getNdim());
+-    std::fill(iniVal.begin(), iniVal.end(), T());
+-    allocateFields(&iniVal[0]);
++    //std::vector<T> iniVal(this->getNdim());
++    //std::fill(iniVal.begin(), iniVal.end(), T());
++  const T * iniVal = new T[this->getNdim()];
++    allocateFields(iniVal);
++    delete[] iniVal;
+ }
+ 
+ template<typename T>
 diff --git a/src/multiBlock/sparseBlockStructure3D.cpp b/src/multiBlock/sparseBlockStructure3D.cpp
 index a8ae15e..fe3e896 100644
 --- a/src/multiBlock/sparseBlockStructure3D.cpp

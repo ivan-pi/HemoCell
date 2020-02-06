@@ -29,7 +29,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
  * Which version are we at
  */
 #define VERSION_MAJOR 2
-#define VERSION_MINOR "0.b"
+#define VERSION_MINOR "1"
 
 // Use for solidifying, performance impact so only enable when using
 #ifndef SOLIDIFY_MECHANICS
@@ -106,8 +106,11 @@ FORCE_LIMIT sets the allowed maximal force coming from the constitutive model (i
 #define OUTPUT_INNER_LINKS 11
 #define OUTPUT_OMEGA 12
 #define OUTPUT_BOUNDARY 13
-#define OUTPUT_SHEAR_RATE 14
-#define OUTPUT_STRAIN_RATE 15
+#define OUTPUT_BINDING_SITES 14
+#define OUTPUT_INTERIOR_POINTS 15
+#define OUTPUT_SHEAR_RATE 16
+#define OUTPUT_STRAIN_RATE 17
+#define OUTPUT_RES_TIME 18
 
 //==================== Not really an option but a nice shortcut
 #define param Parameters

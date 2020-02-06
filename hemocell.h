@@ -153,7 +153,7 @@ class HemoCell {
   void enableBoundaryParticles(T boundaryRepulsionConstant, T boundaryRepulsionCutoff, unsigned int timestep = 1);
   
   //Set the minimum distance of the particles of a type to the solid, must be called BEFORE loadparticles
-  void setMinimumDistanceFromSolid(string name, T distance);
+  void setInitialMinimumDistanceFromSolid(string name, T distance);
   
   //Set the output of the fluid field
   void setFluidOutputs(vector<int> outputs);
@@ -214,9 +214,9 @@ public:
   
   LoadBalancer * loadBalancer = 0;
   ///The fluid lattice
-  MultiBlockLattice3D<T, DESCRIPTOR> * lattice = 0;
+  MultiBlockLattice3D<T, DESCRIPTOR> * lattice = 0, *preinlet_lattice = 0, * domain_lattice = 0;
   
-  MultiBlockManagement3D * preinlet_management = 0, * lattice_management = 0;
+  MultiBlockManagement3D * preinlet_lattice_management = 0, * domain_lattice_management = 0;
   
   Config * cfg = 0;
   ///The cellfields contains the particle field and all celltypes

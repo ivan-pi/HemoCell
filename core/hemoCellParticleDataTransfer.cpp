@@ -83,6 +83,33 @@ void HemoCellParticleDataTransfer::send (
   global.statistics.getCurrent().stop();
 }
 
+
+void HemoCellParticleDataTransfer::send_preinlet(
+        Box3D domain, std::vector<char>& buffer, modif::ModifT kind ) const
+{
+  global.statistics.getCurrent()["MpiSend"].start();
+    buffer.clear();
+    std::vector<NoInitChar> * bufferNoInit = reinterpret_cast<std::vector<NoInitChar>*>(&buffer);
+    
+    // Particles, by definition, are dynamic data, and they need to
+    //   be reconstructed in any case. Therefore, the send procedure
+    //   is run whenever kind is one of the dynamic types.
+    if ( (kind==modif::hemocell || kind==modif::dataStructure))
+    {
+        std::vector<HemoCellParticle*> foundParticles;
+        particleField->findParticles(domain, foundParticles);
+        bufferNoInit->resize(sizeof(HemoCellParticle::serializeValues_t)*foundParticles.size());
+        pluint offset=0;
+        for (HemoCellParticle * iParticle : foundParticles) {
+          *((HemoCellParticle::serializeValues_t*)&(*bufferNoInit)[offset]) = iParticle->sv;
+          offset += sizeof(HemoCellParticle::serializeValues_t);
+          iParticle->sv.restime =0;
+        }
+    }
+  global.statistics.getCurrent().stop();
+}
+
+
 void HemoCellParticleDataTransfer::receive(Box3D domain, std::vector<NoInitChar> const& buffer) {
   global.statistics.getCurrent()["MpiReceive"].start();
   unsigned int posInBuffer = 0;
@@ -172,6 +199,41 @@ void HemoCellParticleDataTransfer::receive (Box3D const & domain, char * buffer,
         posInBuffer += sizeof(HemoCellParticle::serializeValues_t);       
         particleField->addParticle(*newParticle);
       }
+  }
+  global.statistics.getCurrent().stop();
+}
+
+void HemoCellParticleDataTransfer::receivePreInlet (char * buffer, unsigned int size, modif::ModifT kind, Dot3D absoluteOffset )
+{
+  global.statistics.getCurrent()["MpiReceivePreInlet"].start();
+  //const map<int,bool> & lpc = particleField->get_lpc();
+  
+  if ((kind==modif::hemocell || kind==modif::dataStructure))
+  {
+    int offset = getOffset(absoluteOffset);
+    hemo::Array<T,3> realAbsoluteOffset({(T)absoluteOffset.x, (T)absoluteOffset.y, (T)absoluteOffset.z});
+    unsigned int posInBuffer = 0;
+    
+    HemoCellParticle::serializeValues_t * newParticle;;
+    while (posInBuffer < size) {
+        // 1. Generate dynamics object, and unserialize dynamic data.
+      newParticle = (HemoCellParticle::serializeValues_t*)&buffer[posInBuffer];
+      posInBuffer += sizeof(HemoCellParticle::serializeValues_t);
+      //Edit in buffer, but it is not used again anyway
+      newParticle->position += realAbsoluteOffset;
+          //Check for overflows
+      if (((offset < 0) && (newParticle->cellId < INT_MIN-offset)) ||
+          ((offset > 0) && (newParticle->cellId > INT_MAX-offset))) {
+        cout << "(HemoCellParticleDataTransfer) Almost invoking overflow in periodic particle communication, resetting ID to base ID instead, this will most likely delete the particle" << endl;
+        newParticle->cellId = particleField->cellFields->base_cell_id(newParticle->cellId);
+      } else {
+        newParticle->cellId += offset;
+      }
+      
+      //Check if we have any of this cell, if so, it was not deleted, and therefore we should not add it
+      //if (lpc.find(newParticle->cellId) != lpc.end()) { continue; }
+      particleField->addParticlePreinlet(*newParticle);
+    }
   }
   global.statistics.getCurrent().stop();
 }

@@ -30,6 +30,7 @@ class HemoCellFields;
 #include "genericFunctions.h"
 #include "hemoCellFunctional.h"
 #include "hemoCellField.h"
+#include "hemoCellParticle.h"
 #include "config.h"
 #include <unistd.h>
 
@@ -142,12 +143,18 @@ public:
 
   /// Add boundary particles on the fluid-solid boundary
   void populateBoundaryParticles();
+
+  /// Add bindingSites
+  void populateBindingSites(plb::Box3D * box = 0);
   
   /// Delete non local particles (do not delete in envelopesize)
   void deleteNonLocalParticles(int envelope);
   
   /// Conditionally solidify cells if requested
   void solidifyCells();
+  
+  /// increment cell residence time 
+  void updateResidenceTime(unsigned int rtime);
   
   //Class Variables
   
@@ -165,6 +172,9 @@ public:
   pluint envelopeSize;
   /// palabos field storing the particles
   plb::MultiParticleField3D<HEMOCELL_PARTICLE_FIELD> * immersedParticles = 0;
+  /// seperate preinlet and domain pointers whenever necessary
+  plb::MultiParticleField3D<HEMOCELL_PARTICLE_FIELD> * preinlet_immersedParticles = 0, * domain_immersedParticles = 0;
+
   /// palabos field for storing the CPAC scalar field if used
   plb::MultiBlockLattice3D<T,CEPAC_DESCRIPTOR> * CEPACfield = 0; 
 
@@ -292,6 +302,10 @@ public:
    void processGenericBlocks(plb::Box3D, std::vector<plb::AtomicBlock3D*>);
    HemoPopulateBoundaryParticles * clone() const;
   };
+  class HemoPopulateBindingSites: public HemoCellFunctional {
+   void processGenericBlocks(plb::Box3D, std::vector<plb::AtomicBlock3D*>);
+   HemoPopulateBindingSites * clone() const;
+  };
   class HemoDeleteNonLocalParticles: public HemoCellFunctional {
    void processGenericBlocks(plb::Box3D, std::vector<plb::AtomicBlock3D*>);
    HemoDeleteNonLocalParticles * clone() const;
@@ -302,6 +316,12 @@ public:
   class HemoSolidifyCells: public HemoCellFunctional {
     void processGenericBlocks(plb::Box3D, std::vector<plb::AtomicBlock3D*>);
     HemoSolidifyCells * clone() const;
+  };
+  class HemoupdateResidenceTime: public HemoCellFunctional {
+    void processGenericBlocks(plb::Box3D, std::vector<plb::AtomicBlock3D*>);
+    HemoupdateResidenceTime * clone() const;
+  public:
+    unsigned int rtime;
   };
 };
 }

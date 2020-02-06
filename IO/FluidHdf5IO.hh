@@ -157,6 +157,16 @@ public:
           name = "Boundary";
           dim[3] = 1;
         break;
+        case OUTPUT_BINDING_SITES:
+          output = outputBindingSites();
+          name = "BindingSites";
+          dim[3] = 1;
+        break;
+        case OUTPUT_INTERIOR_POINTS:
+          output = outputInteriorPoints();
+          name = "InteriorPoints";
+          dim[3] = 1;
+        break;
         case OUTPUT_OMEGA:
           output = outputOmega();
           name = "Omega";
@@ -294,6 +304,53 @@ private:
     return output;
   }
   
+  float * outputBindingSites() {
+    float * output = new float [(*nCells)];
+    if (!particlefield->bindingField) {
+      pcout << "(FluidHdf5) (Error) OUTPUT_BINDING_SITES requested, but binding sites not used, outputting a zero field" << endl;
+      for (hsize_t i = 0 ; i < *nCells ; i++) {
+        output[i] = 0;
+      }
+      return output;
+    }
+    unsigned int n = 0;
+    for (plint iZ=odomain->z0-1; iZ<=odomain->z1+1; ++iZ) {
+      for (plint iY=odomain->y0-1; iY<=odomain->y1+1; ++iY) {
+        for (plint iX=odomain->x0-1; iX<=odomain->x1+1; ++iX) {
+
+          if (particlefield->bindingField->get(iX,iY,iZ)) {
+            output[n] = 1;
+          } else {
+            output[n] = 0;
+          }
+          n++;
+        }
+      }
+    }
+    return output;
+  }
+
+  float * outputInteriorPoints() {
+    float * output = new float [(*nCells)];
+    if (!particlefield->interiorViscosityField) {
+      pcout << "(FluidHdf5) (Error) OUTPUT_INTERIOR_POINTS requested, but interior viscosity not used, outputting a zero field" << endl;
+      for (hsize_t i = 0 ; i < *nCells ; i++) {
+        output[i] = 0;
+      }
+      return output;
+    }
+    unsigned int n = 0;
+    for (plint iZ=odomain->z0-1; iZ<=odomain->z1+1; ++iZ) {
+      for (plint iY=odomain->y0-1; iY<=odomain->y1+1; ++iY) {
+        for (plint iX=odomain->x0-1; iX<=odomain->x1+1; ++iX) {
+          output[n] = (particlefield->interiorViscosityField->get(iX,iY,iZ));
+          n++;
+        }
+      }
+    }
+    return output;
+  }
+   
   float * outputOmega() {
     float * output = new float [(*nCells)];
     unsigned int n = 0;
@@ -450,7 +507,7 @@ private:
     }   
      
     if (cellfields.hemocell.outputInSiUnits) {
-      for (unsigned int i = 0 ; i < (*nCells) ; i++) {
+      for (unsigned int i = 0 ; i < (*nCells)*6 ; i++) {
         output[i] = output[i]*(1/(param::dt));
       }
     }
