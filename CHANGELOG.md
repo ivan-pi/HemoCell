@@ -6,10 +6,25 @@ In this changelog, we consider the following classes of changes:
 * Structure: any changes to the structure of HemoCell that may break existing cases.
 * Fixes: (small) changes that do not fall in the other categories.
 
+2.3 (Jun 1 2021)
+----------------
+* Features
+  * Rebuilt the build environment. For more details, please see the quickstart guide in the documentation.
+  * Added the cube example in which a cubic domain is subjected to a shear flow on the top/bottom planes.
+* Structure
+  * HemoCell now depends on Palabos 2.2.1 as the older version used previously is no longer available. The patch and setup.sh file has been updated to reflect this.
+* Fixes
+  * Remove some useless output in the cellStretch example
+
 2.2 (Dec 7 2020)
 ----------------
 * Features
-  * Added support for Lees-Edwards boundary conditions
+  * Added support for Lees-Edwards boundary conditions (single core only for now, example soon to come with publication).
+  * Significantly improved and updated the documentation.
+  * Publications using HemoCell added to documentation.
+  * Updated the website with more examples in the gallery.
+  * Added further output fields: e.g. shear rate, strain rate, shear stress.
+  * Several small updates and QoL improvements in the otput processing scripts.
 * Fixes
   * Fix a bug in the velocity output when SI units were used
 
