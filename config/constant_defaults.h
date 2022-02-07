@@ -21,6 +21,9 @@ GNU Affero General Public License for more details.
 You should have received a copy of the GNU Affero General Public License
 along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
+
+#include <iomanip>
+
 #ifndef CONSTANT_DEFAULTS_H
 #define CONSTANT_DEFAULTS_H
 // ============== Compile time options - Set these
@@ -69,10 +72,6 @@ FORCE_LIMIT sets the allowed maximal force coming from the constitutive model (i
 // in [pN / surface particle].
 #ifndef FORCE_LIMIT
 #define FORCE_LIMIT 50.0 
-#endif
-
-#ifndef HEMOCELL_PARTICLE_FIELD
-#define HEMOCELL_PARTICLE_FIELD class HemoCellParticleField
 #endif
 
 /*
