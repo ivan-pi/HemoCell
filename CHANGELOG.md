@@ -6,8 +6,21 @@ In this changelog, we consider the following classes of changes:
 * Structure: any changes to the structure of HemoCell that may break existing cases.
 * Fixes: (small) changes that do not fall in the other categories.
 
-Unreleased
-----------
+2.6 (July 15 2022)
+-----------------
+* Features
+  * Added functionality to hemocell.initializeLattice() to define domain decomposition. It can be read from the config xml (xml tags: mABx, mABy, mABz).
+  * Added weak-scaling test config generator for the case ``cube``. The config template contains an example for the previous domain decomposition tags.
+  * The cell packing tool has been improved significantly with better automatic resolution to avoid cell overlapping.
+  * Added mouse blood cell types to the cell packing tool.
+  * The cell templates (along with the new mouse cells) are available under ``tools/cell_templates``.
+  * New module shell script for Cirrus (EPCC).
+* Fixes
+  * Various comment fixes in the code.
+  * Better error messages.
+  * Improved sanity-check function.
+  * ``tools/pos_to_vtk`` can now be used without installation.
+  * Changes to the cellPacking default values and messages to make it easier to use.
 
 2.5 (Jan 27 2022)
 -----------------

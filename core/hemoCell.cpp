@@ -142,7 +142,7 @@ void HemoCell::initializeCellfield() {
   lattice->getMultiBlockManagement().changeEnvelopeWidth(1);
   lattice->signalPeriodicity();
   
-  //Correct place for init
+  // Correct place for init
   loadBalancer = new LoadBalancer(*this);
 }
 
@@ -238,7 +238,7 @@ void HemoCell::writeOutput() {
     cellfields->applyBoundaryRepulsionForce();
   }
 
-  //update larger lattice envelopes
+  // update larger lattice envelopes
   lattice->getMultiBlockManagement().changeEnvelopeWidth(2);
   lattice->signalPeriodicity();
   lattice->getBlockCommunicator().duplicateOverlaps(*lattice,modif::staticVariables);
@@ -251,10 +251,10 @@ void HemoCell::writeOutput() {
     cellfields->deleteIncompleteCells(false);   
   }
 
-  //Repoint surfaceparticle forces for output
+  // Repoint surfaceparticle forces for output
   cellfields->separate_force_vectors();
 
-  //Recalculate the forces
+  // Recalculate the forces
   cellfields->applyConstitutiveModel(true);
 
   // Creating a new directory per save
@@ -269,7 +269,7 @@ void HemoCell::writeOutput() {
 
 
   
-  //Write Output
+  // Write Output
   global.statistics.getCurrent()["writeOutput"].start();
   writeCellField3D_HDF5(*cellfields,param::dx,param::dt,iter);
   writeFluidField_HDF5(*cellfields,param::dx,param::dt,iter);
@@ -279,7 +279,7 @@ void HemoCell::writeOutput() {
   writeCellInfo_CSV(*this);
   global.statistics.getCurrent().stop();
 
-  //Repoint surfaceparticle forces for speed
+  // Repoint surfaceparticle forces for speed
   cellfields->unify_force_vectors();
   cellfields->syncEnvelopes();
   // Continue with performance measurement
@@ -357,7 +357,7 @@ void HemoCell::iterate() {
     global.statistics.getCurrent().stop();
   }
   
-  //We can safely delete non-local cells here, assuming model timestep is divisible by velocity timestep
+  // We can safely delete non-local cells here, assuming model timestep is divisible by velocity timestep
   if(iter % cellfields->particleVelocityUpdateTimescale == 0) {
     if (global.cellsDeletedInfo) {
       cellfields->deleteIncompleteCells(true);
@@ -388,7 +388,7 @@ void HemoCell::setMaterialTimeScaleSeparation(string name, unsigned int separati
 
 void HemoCell::setParticleVelocityUpdateTimeScaleSeparation(unsigned int separation) {
   hlog << "(HemoCell) (Timescale separation) Setting update separation of all particles to " << separation << " timesteps" << endl;
-  hlogfile << "(HemoCell) WARNING this introduces great errors" << endl;
+  hlogfile << "(HemoCell) WARNING time-scale separation can introduce numerical error! " << endl;
   cellfields->particleVelocityUpdateTimescale = separation;
 }
 
@@ -413,14 +413,14 @@ void HemoCell::setInteriorViscosityTimeScaleSeperation(unsigned int separation, 
 void HemoCell::setInitialMinimumDistanceFromSolid(string name, T distance) {
   hlog << "(HemoCell) (Set Distance) Setting minimum distance from solid to " << distance << " micrometer for " << name << endl; 
   if (loadParticlesIsCalled) {
-    pcout << "(HemoCell) (Set Distance) WARNING: this function is called after the particles are loaded, so it probably has no effect" << endl;
+    pcout << "(HemoCell) (Set Distance) WARNING: this function is called after the particles are loaded, so it has no effect!" << endl;
   }
   (*cellfields)[name]->minimumDistanceFromSolid = distance;
 }
 
 void HemoCell::setRepulsion(T repulsionConstant, T repulsionCutoff) {
-  hlog << "(HemoCell) (Repulsion) Setting repulsion constant to " << repulsionConstant << ". repulsionCutoff to" << repulsionCutoff << " Âµm" << endl;
-  hlogfile << "(HemoCell) (Repulsion) Enabling repulsion" << endl;
+  hlog << "(HemoCell) (Repulsion) Setting repulsion constant to " << repulsionConstant << ". repulsionCutoff to" << repulsionCutoff << " µm" << endl;
+  hlogfile << "(HemoCell) (Repulsion) Enabling repulsion." << endl;
   cellfields->repulsionConstant = repulsionConstant;
   cellfields->repulsionCutoff = repulsionCutoff*(1e-6/param::dx);
   repulsionEnabled = true;
@@ -428,7 +428,7 @@ void HemoCell::setRepulsion(T repulsionConstant, T repulsionCutoff) {
 
 void HemoCell::enableBoundaryParticles(T boundaryRepulsionConstant, T boundaryRepulsionCutoff, unsigned int timestep) {
   cellfields->populateBoundaryParticles();
-  hlog << "(HemoCell) (Repulsion) Setting boundary repulsion constant to " << boundaryRepulsionConstant << ". boundary repulsionCutoff to" << boundaryRepulsionCutoff << " Âµm" << endl;
+  hlog << "(HemoCell) (Repulsion) Setting boundary repulsion constant to " << boundaryRepulsionConstant << ". boundary repulsionCutoff to" << boundaryRepulsionCutoff << " µm" << endl;
   hlogfile << "(HemoCell) (Repulsion) Enabling boundary repulsion" << endl;
   cellfields->boundaryRepulsionConstant = boundaryRepulsionConstant;
   cellfields->boundaryRepulsionCutoff = boundaryRepulsionCutoff*(1e-6/param::dx);
@@ -442,12 +442,34 @@ void HemoCell::initializeLattice(MultiBlockManagement3D const & management) {
   }
 
   if (!preInlet) {
-    hlog << "(HemoCell) No preinlet specified, running with all cores on domain with given management" << endl;
-    lattice = new MultiBlockLattice3D<T,DESCRIPTOR>(management,
+  
+    try {
+      SparseBlockStructure3D sb = createRegularDistribution3D(management.getBoundingBox(),
+                                                             (*cfg)["domain"]["mABx"].read<int>(),
+                                                             (*cfg)["domain"]["mABy"].read<int>(),
+                                                             (*cfg)["domain"]["mABz"].read<int>());
+
+      hlog << "(HemoCell) Domain management overwritten from config file." << endl;
+      ExplicitThreadAttribution * eta = new ExplicitThreadAttribution(BlockToMpi);
+      domain_lattice_management = new MultiBlockManagement3D(sb,eta,management.getEnvelopeWidth(),management.getRefinementLevel());      
+
+      lattice = new MultiBlockLattice3D<T,DESCRIPTOR>(*domain_lattice_management,
             defaultMultiBlockPolicy3D().getBlockCommunicator(),
             defaultMultiBlockPolicy3D().getCombinedStatistics(),
             defaultMultiBlockPolicy3D().getMultiCellAccess<T, DESCRIPTOR>(),
             new GuoExternalForceBGKdynamics<T, DESCRIPTOR>(1.0/param::tau));
+
+    }
+    catch (const std::invalid_argument& e) {
+      hlog << "(HemoCell) Using default domain management." << endl;
+ 
+      lattice = new MultiBlockLattice3D<T,DESCRIPTOR>(management,
+            defaultMultiBlockPolicy3D().getBlockCommunicator(),
+            defaultMultiBlockPolicy3D().getCombinedStatistics(),
+            defaultMultiBlockPolicy3D().getMultiCellAccess<T, DESCRIPTOR>(),
+            new GuoExternalForceBGKdynamics<T, DESCRIPTOR>(1.0/param::tau));
+    }
+
     domain_lattice = lattice;
     return;
   }
@@ -465,7 +487,8 @@ void HemoCell::initializeLattice(MultiBlockManagement3D const & management) {
     preInlet->nProcs = 1;
   }
 
-  // JON addition: Try to read in number of processors allocated to preinlet from config file. 
+  // JON addition: Try to read in number of processors allocated to preinlet from config file.
+  // TODO: Do we still need this? 
   // Just continue with value computed above if reading it from XML throws an exception because it does not exist
   try  { preInlet->nProcs = (*cfg)["preInlet"]["parameters"]["nProcs"].read<int>(); }
   catch (const std::invalid_argument& e)  {}
@@ -495,14 +518,38 @@ void HemoCell::initializeLattice(MultiBlockManagement3D const & management) {
     }
   }
   
-  SparseBlockStructure3D sb_preinlet = createRegularDistribution3D(preInlet->location,preInlet->nProcs);
-  ExplicitThreadAttribution * eta_preinlet = new ExplicitThreadAttribution(preInlet->BlockToMpi);
-  preinlet_lattice_management = new MultiBlockManagement3D(sb_preinlet,eta_preinlet,management.getEnvelopeWidth(),management.getRefinementLevel());
+  try {  // Look for block management info in the config file    
+    SparseBlockStructure3D sb_preinlet = createRegularDistribution3D(preInlet->location,
+                                                                     (*cfg)["preInlet"]["parameters"]["pABx"].read<int>(),
+                                                                     (*cfg)["preInlet"]["parameters"]["pABy"].read<int>(),
+                                                                     (*cfg)["preInlet"]["parameters"]["pABz"].read<int>());
+    hlog << "(HemoCell) (PreInlet) Domain management overwritten from config file." << endl;
+    ExplicitThreadAttribution * eta_preinlet = new ExplicitThreadAttribution(preInlet->BlockToMpi);
+    preinlet_lattice_management = new MultiBlockManagement3D(sb_preinlet,eta_preinlet,management.getEnvelopeWidth(),management.getRefinementLevel());
+  }
+  catch (const std::invalid_argument& e) { // If nonexistent, fall back to the default distribution
+    hlog << "(HemoCell) (PreInlet) Using default domain management." << endl;
+    SparseBlockStructure3D sb_preinlet = createRegularDistribution3D(preInlet->location,preInlet->nProcs);
+    ExplicitThreadAttribution * eta_preinlet = new ExplicitThreadAttribution(preInlet->BlockToMpi);
+    preinlet_lattice_management = new MultiBlockManagement3D(sb_preinlet,eta_preinlet,management.getEnvelopeWidth(),management.getRefinementLevel());
+  }
 
-  SparseBlockStructure3D sb = createRegularDistribution3D(management.getBoundingBox(),nProcs);
-  ExplicitThreadAttribution * eta = new ExplicitThreadAttribution(BlockToMpi);
-  domain_lattice_management = new MultiBlockManagement3D(sb,eta,management.getEnvelopeWidth(),management.getRefinementLevel());
-  
+  try { // Look for block management info in the config file
+    SparseBlockStructure3D sb = createRegularDistribution3D(management.getBoundingBox(),
+                                                           (*cfg)["domain"]["mABx"].read<int>(),
+                                                           (*cfg)["domain"]["mABy"].read<int>(),
+                                                           (*cfg)["domain"]["mABz"].read<int>());
+    hlog << "(HemoCell) Domain management overwritten from config file." << endl;
+    ExplicitThreadAttribution * eta = new ExplicitThreadAttribution(BlockToMpi);
+    domain_lattice_management = new MultiBlockManagement3D(sb,eta,management.getEnvelopeWidth(),management.getRefinementLevel());
+  }
+  catch (const std::invalid_argument& e) { // If nonexistent, fall back to the default distribution
+    hlog << "(HemoCell) Using default sparse domain management." << endl;
+    SparseBlockStructure3D sb = createRegularDistribution3D(management.getBoundingBox(),nProcs);
+    ExplicitThreadAttribution * eta = new ExplicitThreadAttribution(BlockToMpi);
+    domain_lattice_management = new MultiBlockManagement3D(sb,eta,management.getEnvelopeWidth(),management.getRefinementLevel());
+  }
+
   preinlet_lattice = new MultiBlockLattice3D<T,DESCRIPTOR>(*preinlet_lattice_management,
             defaultMultiBlockPolicy3D().getBlockCommunicator(),
             defaultMultiBlockPolicy3D().getCombinedStatistics(),
@@ -548,7 +595,7 @@ void HemoCell::sanityCheck() {
 
   }
   
-  //Material sanity
+  // Material sanity
   if (boundaryRepulsionEnabled) {
     if (cellfields->boundaryRepulsionTimescale%cellfields->particleVelocityUpdateTimescale!=0) {
      hlog << "(HemoCell) Error, Particle velocity timescale separation cannot divide this repulsion timescale separation, exiting ..." <<endl;
@@ -578,10 +625,10 @@ void HemoCell::sanityCheck() {
     }
   }
   
-  //Cellfields Sanity
-  //Check number of neighbours
+  // Cellfields Sanity
+  // Check number of neighbours
   if (cellfields->max_neighbours > 30) {
-    hlog << "(HemoCell) WARNING: The number of atomic neighbours is suspiciously high: " << cellfields->max_neighbours << " Usually it should be < 30 ! Check the atomic block structure!" << endl;
+    hlog << "(HemoCell) WARNING: The number of atomic neighbours is suspiciously high: " << cellfields->max_neighbours << " Usually it should be < 30 ! Please check the domain decomposition structure!" << endl;
   }
   
   if (global.enableInteriorViscosity) {
@@ -629,17 +676,17 @@ void HemoCell::sanityCheck() {
   bool printed = false;
   plint nx,ny,nz,numBlocks,numAllocatedCells;
   Box3D smallest,largest;
-  //Check if atomic block sizes are in an acceptable range, not as fancy as the check in voxelizeDomain, maybe for later
+  // Check if atomic block sizes are in an acceptable range, not as fancy as the check in voxelizeDomain, maybe for later
   getMultiBlockInfo(*lattice, nx, ny, nz, numBlocks, smallest, largest, numAllocatedCells);
-  //check largest
+  // check largest
   if (largest.getNx() > 25 || largest.getNy() > 25 || largest.getNz() > 25) {
     hlog << getMultiBlockInfo(*lattice);
-    hlog << "(SanityCheck) one of the dimensions of the largest atomic block is more than 25.\n  This is inefficient, The best performance is with 16x16x16 blocks.\n  It is recommended to adjust the number of processors or the sparseBlockStructure accordingly." << endl;
+    hlog << "(SanityCheck) one of the dimensions of the largest atomic block is more than 25.\n  This can be inefficient. The best performance is below 26x26x26 blocks.\n  It is recommended to adjust the number of processors or the sparseBlockStructure accordingly." << endl;
     printed = true;
   } 
   if (smallest.getNx() < 16 || smallest.getNy() < 16 || smallest.getNz() < 16) {
     if(!printed) { hlog << getMultiBlockInfo(*lattice); }
-    hlog << "(SanityCheck) one of the dimensions of the smallest atomic block is less than 16.\n  This is inefficient, The best performance is with 16x16x16 blocks.\n  It is recommended to adjust the number of processors or the sparseBlockStructure accordingly." << endl;
+    hlog << "(SanityCheck) one of the dimensions of the smallest atomic block is less than 16.\n  This can be inefficient. For the best performance we recommend between 20^3 to 25^3 blocks.\n  It is recommended to adjust the number of processors or the sparseBlockStructure, and making sure that the particleEnvelope is smaller than the block size." << endl;
     printed = true;
   }
   
