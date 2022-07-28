@@ -12,3 +12,11 @@ add_executable(${EXEC_NAME} "${CMAKE_CURRENT_SOURCE_DIR}/${MAIN}.cpp")
 # link the executable to `hemocell` and `HDF5` dependencies
 target_link_libraries(${EXEC_NAME} ${PROJECT_NAME})
 target_link_libraries(${EXEC_NAME} ${HDF5_C_HL_LIBRARIES} ${HDF5_LIBRARIES})
+
+if(HEMOCELL_INSTALL_CUBE)
+install(TARGETS ${EXEC_NAME}
+    RUNTIME DESTINATION bin)
+install(DIRECTORY preprocess/ DESTINATION bin)
+install(DIRECTORY ../../config/ DESTINATION config)
+install(FILES RBC.xml README.md DESTINATION .)
+endif()
